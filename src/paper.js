@@ -19,12 +19,11 @@ export function createPaperSystem(carriageGroup) {
   clearPaperCanvas();
 
   const paperTexture = new THREE.CanvasTexture(paperCanvas);
-  paperTexture.flipY = true; // Upright standard WebGL orientation
+  paperTexture.flipY = true;
   paperTexture.minFilter = THREE.LinearFilter;
   paperTexture.magFilter = THREE.LinearFilter;
   paperTexture.anisotropy = 4;
 
-  // Ensure fonts are loaded so canvas text uses Courier Prime / Special Elite immediately
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => {
       paperTexture.needsUpdate = true;
@@ -32,27 +31,25 @@ export function createPaperSystem(carriageGroup) {
   }
 
   /**
-   * Stamps a character onto the upright paper CanvasTexture at the exact pixel coordinate
-   * corresponding to `col` and `lineIndex` so it lines up 1:1 with the printing point at world X = 0.
-   * Channel encoding:
-   * - R: Black ribbon ink density
-   * - G: Red ribbon ink density
-   * - B: Total letterpress deboss depth
+   * Stamps a large, dark, crisp typewriter glyph onto the 2048x2048 CanvasTexture:
+   * - Darker core with a softer ink-bleed halo
+   * - Slight uneven ribbon density per letter + tiny baseline jitter
+   * - Channel encoding: R = Black ink, G = Red ink, B = Letterpress deboss heightfield
    */
   function stampCharacter(char, col, lineOffsetFromActive = 0, ribbonColor = 'black', absoluteLineId = 0) {
     const key = `${absoluteLineId}:${col}`;
     const prevStrikes = strikeGrid.get(key) || 0;
     strikeGrid.set(key, prevStrikes + 1);
 
-    // Exact horizontal pixel center for column `col`
+    // Exact horizontal pixel center for column `col` (matches carriage world step 1:1)
     const centerX = CONFIG.paperCol0PxX + col * CONFIG.paperCharPxX;
     const baselineY = CONFIG.paperActiveLineCanvasY - lineOffsetFromActive * CONFIG.paperLinePxY;
 
-    // Subtle mechanical baseline jitter & ink density variation (darker on double-strike)
-    const jitterX = (Math.random() - 0.5) * 1.8;
-    const jitterY = (Math.random() - 0.5) * 2.4;
-    const rotJitter = (Math.random() - 0.5) * 0.028;
-    const baseDensity = Math.min(255, Math.floor(218 + Math.random() * 37 + prevStrikes * 35));
+    // Tiny typewriter baseline & angle jitter + slight per-letter ink variation
+    const jitterX = (Math.random() - 0.5) * 2.0;
+    const jitterY = (Math.random() - 0.5) * 2.8;
+    const rotJitter = (Math.random() - 0.5) * 0.032;
+    const baseDensity = Math.min(255, Math.floor(225 + Math.random() * 30 + prevStrikes * 35));
 
     const rVal = ribbonColor === 'black' ? baseDensity : 0;
     const gVal = ribbonColor === 'red'   ? baseDensity : 0;
@@ -63,28 +60,32 @@ export function createPaperSystem(carriageGroup) {
     paperCtx.translate(centerX + jitterX, baselineY + jitterY);
     paperCtx.rotate(rotJitter);
 
-    paperCtx.font = 'bold 46px "Courier Prime", "Special Elite", "Courier New", Courier, monospace';
+    // Large 64px bold monospace face (~1.6% of sheet height; crisp and legible at 1280x800)
+    paperCtx.font = 'bold 64px "Courier Prime", "Special Elite", "Courier New", Courier, monospace';
     paperCtx.textAlign = 'center';
     paperCtx.textBaseline = 'alphabetic';
 
-    // Outer ink bleed halo
-    paperCtx.shadowColor = `rgb(${Math.floor(rVal * 0.7)}, ${Math.floor(gVal * 0.7)}, ${Math.floor(bVal * 0.75)})`;
-    paperCtx.shadowBlur = 2.5;
-    paperCtx.fillStyle = `rgb(${rVal}, ${gVal}, ${bVal})`;
+    // 1. Lighter ink-bleed halo around glyph
+    paperCtx.shadowColor = `rgb(${Math.floor(rVal * 0.65)}, ${Math.floor(gVal * 0.65)}, ${Math.floor(bVal * 0.72)})`;
+    paperCtx.shadowBlur = 4.5;
+    paperCtx.fillStyle = `rgb(${Math.floor(rVal * 0.85)}, ${Math.floor(gVal * 0.85)}, ${Math.floor(bVal * 0.85)})`;
     paperCtx.fillText(char, 0, 0);
 
-    // Crisp core letterpress impression
+    // 2. Darker, heavier ink core with slight ribbon-weave micro-offset
     paperCtx.shadowBlur = 0;
-    paperCtx.fillText(char, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6);
+    paperCtx.fillStyle = `rgb(${rVal}, ${gVal}, ${bVal})`;
+    paperCtx.fillText(char, 0, 0);
+    paperCtx.lineWidth = 1.6;
+    paperCtx.strokeStyle = `rgb(${rVal}, ${gVal}, ${bVal})`;
+    paperCtx.strokeText(char, (Math.random() - 0.5) * 0.7, (Math.random() - 0.5) * 0.7);
     paperCtx.restore();
 
     paperTexture.needsUpdate = true;
   }
 
   /**
-   * Shifts all existing canvas lines UP by one line (`paperLinePxY`) when the user performs a line feed,
-   * so the active typing line always stays at `paperActiveLineCanvasY` (just above the platen printing point)
-   * while already-typed lines visibly roll up the sheet!
+   * Shifts all existing canvas lines UP by one line (`paperLinePxY` = 74px) on line feed
+   * so previous 10-12 lines remain clearly readable above the active typing line.
    */
   function rollCanvasTextUpOneLine() {
     const dy = CONFIG.paperLinePxY;
@@ -103,7 +104,7 @@ export function createPaperSystem(carriageGroup) {
     uScrollV: { value: 0.0 },
     uFeedWave: { value: 0.0 },
     uInsertProgress: { value: 0.0 },
-    uLightDir: { value: new THREE.Vector3(6.0, 11.5, 8.0).normalize() }
+    uLightDir: { value: new THREE.Vector3(5.8, 11.8, 8.2).normalize() }
   };
 
   const paperShaderMaterial = new THREE.ShaderMaterial({
@@ -113,38 +114,38 @@ export function createPaperSystem(carriageGroup) {
     fragmentShader: PAPER_FRAGMENT_SHADER
   });
 
-  // Curved Paper Sheet Geometry wrapping around platen and rising up
+  // Curved Hero Paper Sheet Geometry wrapping around platen and rising prominently
   function createCurvedPaperGeometry(width, heightSegments = 64) {
     const geo = new THREE.PlaneGeometry(width, 1.0, 48, heightSegments);
     const posAttr = geo.attributes.position;
-    const r = CONFIG.platenRadius + 0.02;
+    const r = CONFIG.platenRadius + 0.022;
 
     for (let i = 0; i < posAttr.count; i++) {
       const u = posAttr.getY(i) + 0.5; // 0 (bottom under platen) -> 1 (top edge of sheet)
       let py = 0;
       let pz = 0;
 
-      if (u < 0.24) {
-        // Wrap around bottom-front of platen cylinder up to printing point (u = 0.24 is angle 0 at front)
-        const t = u / 0.24;
-        const angle = -Math.PI * 0.55 * (1.0 - t);
+      if (u < 0.22) {
+        // Wrap around bottom-front of platen cylinder up to printing point
+        const t = u / 0.22;
+        const angle = -Math.PI * 0.52 * (1.0 - t);
         py = Math.sin(angle) * r;
         pz = Math.cos(angle) * r;
-      } else if (u < 0.34) {
-        // Curve slightly back toward the paper bail & rear paper table
-        const t = (u - 0.24) / 0.10;
-        const angle = t * (Math.PI * 0.28);
+      } else if (u < 0.30) {
+        // Transition over the upper-front of the platen to `u = 0.30` (where the active typed line sits clearly in view)
+        const t = (u - 0.22) / 0.08;
+        const angle = t * (Math.PI * 0.21);
         py = Math.sin(angle) * r;
         pz = Math.cos(angle) * r;
       } else {
-        // Rise up along the tilted rear paper support table so typed lines are clearly visible
-        const t = (u - 0.34) / 0.66;
-        const baseAngle = Math.PI * 0.28;
+        // Rise up prominently at a gentle 18-degree angle facing the camera so all typed lines read clearly
+        const t = (u - 0.30) / 0.70;
+        const baseAngle = Math.PI * 0.21;
         const startY = Math.sin(baseAngle) * r;
         const startZ = Math.cos(baseAngle) * r;
         const sheetLen = CONFIG.paperSheetHeight;
-        py = startY + t * sheetLen * Math.cos(0.24);
-        pz = startZ - t * sheetLen * Math.sin(0.24);
+        py = startY + t * sheetLen * Math.cos(0.20);
+        pz = startZ - t * sheetLen * Math.sin(0.20);
       }
 
       posAttr.setY(i, py);
@@ -160,7 +161,7 @@ export function createPaperSystem(carriageGroup) {
   paperMesh.receiveShadow = true;
   carriageGroup.add(paperMesh);
 
-  let insertAnimProgress = 0.0; // Starts at 0 on load for cinematic paper slide-in
+  let insertAnimProgress = 0.0;
 
   function triggerNewSheetInsert() {
     clearPaperCanvas();
@@ -169,7 +170,6 @@ export function createPaperSystem(carriageGroup) {
   }
 
   function triggerLineFeedWave() {
-    // Smoothly animate scroll offset & vertex wave when line-feeding
     paperUniforms.uScrollV.value = -(CONFIG.paperLinePxY / CONFIG.paperCanvasH);
     paperUniforms.uFeedWave.value = 1.0;
   }
@@ -177,14 +177,12 @@ export function createPaperSystem(carriageGroup) {
   function updatePaper(dt, elapsedTotal) {
     paperUniforms.uTime.value = elapsedTotal;
 
-    // Ease in paper insertion
     if (insertAnimProgress < 1.0) {
-      insertAnimProgress = Math.min(1.0, insertAnimProgress + dt * 1.15);
+      insertAnimProgress = Math.min(1.0, insertAnimProgress + dt * 1.35);
       const eased = 1.0 - Math.pow(1.0 - insertAnimProgress, 3.0);
       paperUniforms.uInsertProgress.value = eased;
     }
 
-    // Smoothly settle line-feed scroll offset to 0
     paperUniforms.uScrollV.value *= Math.exp(-dt * 14.0);
     paperUniforms.uFeedWave.value *= Math.exp(-dt * 7.5);
   }
@@ -198,4 +196,4 @@ export function createPaperSystem(carriageGroup) {
     triggerLineFeedWave,
     updatePaper
   };
-  }
+}
