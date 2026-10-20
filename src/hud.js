@@ -28,12 +28,10 @@ export function createHudSystem(camera, carriageGroup) {
   const leaderRibbon   = document.getElementById('leader-ribbon');
   const dotRibbon      = document.getElementById('dot-ribbon');
 
-  // Compact single-line mobile telemetry elements
-  const compactCol     = document.getElementById('compact-col');
-  const compactLine    = document.getElementById('compact-line');
-  const compactKey     = document.getElementById('compact-key');
-  const compactStrikes = document.getElementById('compact-strikes');
-  const compactBell    = document.getElementById('compact-bell');
+  const compactCol  = document.getElementById('compact-col');
+  const compactLine = document.getElementById('compact-line');
+  const compactKey  = document.getElementById('compact-key');
+  const compactBell = document.getElementById('compact-bell');
 
   function layoutHud() {
     const w = window.innerWidth;
@@ -75,8 +73,8 @@ export function createHudSystem(camera, carriageGroup) {
 
   const anchorCarriageW = new THREE.Vector3();
   const anchorPlatenW   = new THREE.Vector3();
-  const anchorBasketW   = new THREE.Vector3(-1.25, 1.68, -0.25); // Slotted segment arc
-  const anchorRibbonW   = new THREE.Vector3(3.35, 2.34, 0.42);   // Right covered ribbon spool
+  const anchorBasketW   = new THREE.Vector3(-1.25, 1.68, -0.25);
+  const anchorRibbonW   = new THREE.Vector3(3.35, 2.34, 0.42);
 
   function triggerBellFlash() {
     if (!boxCarriage) return;
@@ -94,37 +92,43 @@ export function createHudSystem(camera, carriageGroup) {
     const bellRemaining = (bounds.maxCol - CONFIG.bellOffset) - telemetry.col;
     if (telemetry.marginLocked) {
       hudValBell.textContent = 'MARGIN LOCKED [CR]';
-      hudValBell.style.fill = '#f25f4c';
+      hudValBell.style.fill = '#e05846';
     } else if (bellRemaining > 0) {
       hudValBell.textContent = `BELL IN: ${bellRemaining} CHARS`;
-      hudValBell.style.fill = '#72d6c9';
+      hudValBell.style.fill = '#6ec4b8';
     } else {
       hudValBell.textContent = `BELL RUNG // ${Math.max(0, bounds.maxCol - telemetry.col)} LEFT`;
-      hudValBell.style.fill = '#e8b878';
+      hudValBell.style.fill = '#d8af72';
     }
 
     const lineStr = String(telemetry.pageLine + 1).padStart(2, '0');
-    hudValLine.textContent = `LINE ${lineStr} / ${CONFIG.maxLinesPerPage}`;
-    hudValCase.textContent = telemetry.shiftDown ? 'BASKET: UPPER [SHIFT]' : 'BASKET: LOWERCASE';
+    hudValLine.textContent = telemetry.paperReleased
+      ? `LINE ${lineStr} [FREE]`
+      : `LINE ${lineStr} / ${CONFIG.maxLinesPerPage}`;
+
+    hudValCase.textContent = (telemetry.shiftDown || telemetry.shiftLockedNext)
+      ? 'BASKET: UPPER [SHIFT]'
+      : 'BASKET: LOWERCASE';
 
     hudValLastKey.textContent = `LAST: ${telemetry.lastKeyLabel}`;
     hudValStrikes.textContent = `STRIKES: ${String(telemetry.strikes).padStart(4, '0')}`;
 
-    const ribMode = telemetry.ribbonColor === 'red' ? 'RED' : 'BLK';
+    const ribMode = telemetry.ribbonColor === 'red'
+      ? 'RED'
+      : (telemetry.ribbonColor === 'stencil' ? 'STN' : 'BLK');
     hudValRibbon.textContent = `${ribMode} // ${telemetry.ribbonInk.toFixed(1)}%`;
-    hudValRibbon.style.fill = telemetry.ribbonColor === 'red' ? '#f25f4c' : '#fff8ed';
+    hudValRibbon.style.fill = telemetry.ribbonColor === 'red'
+      ? '#e05846'
+      : (telemetry.ribbonColor === 'stencil' ? '#6ec4b8' : '#f4ece0');
     hudValSpool.textContent = `SPOOL: ${telemetry.spoolAngle.toFixed(2)} RAD`;
 
-    // Single bottom bar readout for portrait / narrow screens
     if (compactCol) {
-      compactCol.textContent = `POS: ${mmPos}mm [${colStr}/${totalCols}]`;
-      compactLine.textContent = `LN: ${lineStr}/${CONFIG.maxLinesPerPage}`;
-      compactKey.textContent = `KEY: ${telemetry.lastKeyLabel}`;
-      compactStrikes.textContent = `STR: ${telemetry.strikes}`;
-      compactBell.textContent = telemetry.marginLocked ? 'LOCKED' : `BELL: ${Math.max(0, bellRemaining)}`;
+      compactCol.textContent = `POS:${mmPos}mm`;
+      compactLine.textContent = `LN:${lineStr}/${CONFIG.maxLinesPerPage}`;
+      compactKey.textContent = `KEY:${telemetry.lastKeyLabel}`;
+      compactBell.textContent = telemetry.marginLocked ? 'LOCKED' : `BELL:${Math.max(0, bellRemaining)}`;
     }
 
-    // Update live strike interval sparkline
     const pts = telemetry.strikeIntervals.map((val, idx) => {
       const x = 8 + (idx / Math.max(1, telemetry.strikeIntervals.length - 1)) * 132;
       const norm = 1.0 - Math.min(1.0, (val - 30) / 420);
@@ -133,7 +137,6 @@ export function createHudSystem(camera, carriageGroup) {
     }).join(' ');
     hudSparkline.setAttribute('points', pts);
 
-    // Project 3D anchors to 2D SVG leader lines on desktop
     const w = window.innerWidth;
     const h = window.innerHeight;
     if (w >= 820 && h >= 560) {
