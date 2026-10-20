@@ -4,7 +4,9 @@ export const CONFIG = {
   // Typing & Page Layout (46 columns on desktop, 36 columns on portrait phones)
   maxCols: 46,
   portraitCols: 36,
-  maxLinesPerPage: 28,
+  maxLinesPerPage: 25,      // 25 lines per page (0..24)
+  MAX_LINE: 24,
+  LINE0_Y: 250,             // Line 0 drawn near the top of the paper texture (y = 250px)
   bellOffset: 8,            // Bell rings 8 chars before active right margin
   charStepWorld: 0.185,     // World units carriage translates LEFT per character
   lineStepWorld: 0.28,      // World units paper rolls UP per line feed
@@ -18,14 +20,10 @@ export const CONFIG = {
   // High-Resolution Paper CanvasTexture (2048 x 2048)
   paperCanvasW: 2048,
   paperCanvasH: 2048,
-  // Exact 1:1 horizontal alignment between world carriage step and canvas pixel step:
-  // (0.185 / 9.0) * 2048 = 42.0978 px per character column
   paperCharPxX: (0.185 / 9.0) * 2048,
-  paperLinePxY: 72,
-  // Column 0 local X on paper is -22.5 * 0.185 = -4.1625 world units from paper center.
-  // Mapped to canvas X pixels: (0.5 - 4.1625 / 9.0) * 2048 = 76.80 px
+  paperLinePxY: 70,         // Line spacing down the page
   paperCol0PxX: (0.5 - (22.5 * 0.185) / 9.0) * 2048,
-  paperLine0CanvasY: 1850,
+  paperLine0CanvasY: 250,
 
   // Printing Point in World Coordinates (center of typebasket & ribbon vibrator)
   strikePoint: new THREE.Vector3(0, 2.70, -0.58),
@@ -34,16 +32,14 @@ export const CONFIG = {
   // Typebar Kinematics Timings (seconds)
   barAnticipationTime: 0.014,
   barSwingUpTime: 0.052,
-  barImpactHoldTime: 0.075, // >60ms hold right against the paper at the printing point
+  barImpactHoldTime: 0.075,
   barReboundTime: 0.145,
 
-  // Exact 3D Bounding Box of the Olivetti Lettera 32 (includes shell cheeks, paper top, knobs, spacebar)
+  // Exact 3D Bounding Box of the Olivetti Lettera 32
   machineBoundsMin: new THREE.Vector3(-6.60, 0.0, -3.35),
   machineBoundsMax: new THREE.Vector3( 6.60, 5.82,  5.05)
 };
 
-// 44-key staggered manual typewriter layout (4 rows)
-// Key spacing = 0.64 so all keys + wide Shift keys sit well inside the inner shell walls (±4.70) with >= 0.42 margin!
 export const KEY_ROWS = [
   {
     row: 0, y: 1.42, z: 2.08, spacing: 0.64, xOffset: -3.52,
@@ -110,7 +106,6 @@ export const KEY_ROWS = [
   }
 ];
 
-// All special keys sit well inside [-4.22, +4.22] so the shell cheeks (±4.70) wrap them with >0.42 margin
 export const SPECIAL_KEYS = [
   { code: 'ShiftLeft',  label: 'SHIFT', x: -3.84, y: 0.76, z: 4.00, radius: 0.33, isWide: true },
   { code: 'ShiftRight', label: 'SHIFT', x:  3.80, y: 0.76, z: 4.00, radius: 0.33, isWide: true },
