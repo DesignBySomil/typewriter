@@ -1,10 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 
-/**
- * Builds a ribbed matte grey-white plastic Olivetti Lettera 32 platen knob
- * with dark radial index marks & an eccentric release button so rotation is clearly visible on each line feed.
- */
 function createRibbedKnob(knobPlasticMat, chromeMat, darkSteelMat, sideSign = 1) {
   const group = new THREE.Group();
 
@@ -20,7 +16,6 @@ function createRibbedKnob(knobPlasticMat, chromeMat, darkSteelMat, sideSign = 1)
   const numRibs = 18;
   for (let i = 0; i < numRibs; i++) {
     const angle = (i / numRibs) * Math.PI * 2;
-    // Every 6th rib is darker steel-grey so knob rotation is unmistakably visible
     const mat = i % 6 === 0 ? darkSteelMat : knobPlasticMat;
     const rib = new THREE.Mesh(ribGeo, mat);
     rib.position.set(0, Math.cos(angle) * 0.398, Math.sin(angle) * 0.398);
@@ -36,7 +31,6 @@ function createRibbedKnob(knobPlasticMat, chromeMat, darkSteelMat, sideSign = 1)
   cap.position.x = sideSign * 0.22;
   group.add(cap);
 
-  // Off-center indicator pin on the knob face so rotation reads from any angle
   const indexPin = new THREE.Mesh(
     new THREE.CylinderGeometry(0.045, 0.045, 0.05, 12),
     darkSteelMat
@@ -63,9 +57,20 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     const isPortrait = (window.innerWidth / Math.max(1, window.innerHeight)) < 0.92;
     const centerCol = (CONFIG.maxCols - 1) * 0.5; // 22.5
     if (isPortrait) {
-      return THREE.MathUtils.clamp((10 - col) * 0.028, -0.32, 0.28);
+      return THREE.MathUtils.clamp((10 - col) * 0.025, -0.28, 0.24);
     }
     return (centerCol - col) * CONFIG.charStepWorld;
+  }
+
+  function colToLocalPaperX(col) {
+    const centerCol = (CONFIG.maxCols - 1) * 0.5; // 22.5
+    return (col - centerCol) * CONFIG.charStepWorld;
+  }
+
+  function localPaperXToCol(localX) {
+    const centerCol = (CONFIG.maxCols - 1) * 0.5;
+    const rawCol = Math.round(localX / CONFIG.charStepWorld + centerCol);
+    return THREE.MathUtils.clamp(rawCol, 0, CONFIG.maxCols);
   }
 
   const startX = computeCarriageXForCol(0);
@@ -106,7 +111,7 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   rightKnob.position.x = CONFIG.platenLength * 0.5 + 0.82;
   platenRollerGroup.add(rightKnob);
 
-  // 2. Carriage End Plates, Angled Paper Table, Rear Margin Rail & Margin Stops
+  // 2. Carriage End Plates, Angled Paper Table, Rear Margin Rail & Draggable Margin Stops
   const endPlateGeo = new THREE.BoxGeometry(0.22, 1.12, 1.50);
   const leftCarriagePlate = new THREE.Mesh(endPlateGeo, enamelBodyMat);
   leftCarriagePlate.position.set(-CONFIG.platenLength * 0.5 - 0.26, 0.08, -0.12);
@@ -130,15 +135,47 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   marginRail.position.set(0, 1.46, -1.04);
   carriageGroup.add(marginRail);
 
-  [-3.65, 3.65].forEach((mx) => {
-    const stopSlider = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.16, 0.15), darkSteelMat);
-    stopSlider.position.set(mx, 1.48, -1.04);
-    carriageGroup.add(stopSlider);
+  function createMarginStopGroup(initialX) {
+    const g = new THREE.Group();
+    g.position.set(initialX, 1.48, -1.04);
 
-    const stopPin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.13, 0.11), chromeMat);
-    stopPin.position.set(mx, 1.58, -1.04);
-    carriageGroup.add(stopPin);
-  });
+    const slider = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.16), darkSteelMat);
+    g.add(slider);
+
+    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.13), chromeMat);
+    pin.position.y = 0.12;
+    g.add(pin);
+
+    const redTip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.06, 0.14),
+      new THREE.MeshBasicMaterial({ color: 0xc8382b })
+    );
+    redTip.position.y = 0.20;
+    g.add(redTip);
+
+    return g;
+  }
+
+  const leftMarginStopGroup = createMarginStopGroup(colToLocalPaperX(0));
+  carriageGroup.add(leftMarginStopGroup);
+
+  const rightMarginStopGroup = createMarginStopGroup(colToLocalPaperX(CONFIG.maxCols));
+  carriageGroup.add(rightMarginStopGroup);
+
+  // 2B. Paper Release Lever on Right Side of Carriage
+  const paperReleaseLeverGroup = new THREE.Group();
+  paperReleaseLeverGroup.position.set(CONFIG.platenLength * 0.5 + 0.16, 0.56, 0.08);
+  carriageGroup.add(paperReleaseLeverGroup);
+
+  const prArm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.36, 0.12), chromeMat);
+  prArm.position.set(0, 0.16, 0.05);
+  prArm.rotation.x = 0.25;
+  paperReleaseLeverGroup.add(prArm);
+
+  const prTip = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.12, 14), darkSteelMat);
+  prTip.rotation.z = Math.PI / 2;
+  prTip.position.set(0, 0.34, 0.12);
+  paperReleaseLeverGroup.add(prTip);
 
   // 3. Matte Satin Paper Bail Bar with Two Small Rubber Rollers
   const bailMat = new THREE.MeshStandardMaterial({
@@ -178,15 +215,6 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   leverPaddle.castShadow = true;
   returnLeverGroup.add(leverPaddle);
 
-  const crLeverController = {
-    code: 'Enter',
-    label: 'RETURN LEVER',
-    isSpecial: true
-  };
-  leverArm.userData.keyController = crLeverController;
-  leverPaddle.userData.keyController = crLeverController;
-  clickableMeshes.push(leverArm, leverPaddle);
-
   const state = {
     targetX: startX,
     velX: 0,
@@ -194,7 +222,10 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     platenCurrentRotX: 0,
     platenRotVelX: 0,
     platenRecoilZ: 0,
-    returnLeverSwing: 0
+    returnLeverSwing: 0,
+    returnLeverDragSwing: 0,
+    paperReleased: false,
+    paperReleaseTargetRotX: 0
   };
 
   function advanceToCol(col, overshootImpulse = -0.42) {
@@ -206,13 +237,27 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     state.platenRecoilZ = -0.034;
   }
 
+  function rotatePlatenByLines(deltaLines) {
+    state.platenTargetRotX -= deltaLines * 0.55;
+    state.platenRotVelX -= Math.sign(deltaLines) * 1.4;
+  }
+
   function triggerCarriageReturnMotion(startCol = 0) {
     state.targetX = computeCarriageXForCol(startCol);
     state.velX += 1.50;
-    state.returnLeverSwing = 0.56;
-    // Rotate platen and both ribbed knobs by ~35 degrees with ratchet spring overshoot
+    state.returnLeverSwing = Math.max(state.returnLeverSwing, 0.58);
     state.platenTargetRotX -= 0.62;
     state.platenRotVelX -= 2.4;
+  }
+
+  function setMarginStopPositions(leftCol, rightCol) {
+    leftMarginStopGroup.position.x = colToLocalPaperX(leftCol);
+    rightMarginStopGroup.position.x = colToLocalPaperX(rightCol);
+  }
+
+  function setPaperReleased(released) {
+    state.paperReleased = Boolean(released);
+    state.paperReleaseTargetRotX = state.paperReleased ? 0.55 : 0.0;
   }
 
   function updateCarriage(dt) {
@@ -222,7 +267,6 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     state.velX = (state.velX + forceX * dt) * Math.exp(-damping * dt);
     carriageGroup.position.x += state.velX * dt;
 
-    // Spring-damper platen & knob rotation so the ribbed knobs visibly turn and ratchet on each line feed
     const rotForce = (state.platenTargetRotX - state.platenCurrentRotX) * 180.0;
     state.platenRotVelX = (state.platenRotVelX + rotForce * dt) * Math.exp(-13.5 * dt);
     state.platenCurrentRotX += state.platenRotVelX * dt;
@@ -232,18 +276,32 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     platenRollerGroup.position.z = state.platenRecoilZ;
 
     state.returnLeverSwing *= Math.exp(-dt * 9.5);
-    returnLeverGroup.rotation.y = state.returnLeverSwing;
+    returnLeverGroup.rotation.y = Math.max(state.returnLeverSwing, state.returnLeverDragSwing);
+
+    paperReleaseLeverGroup.rotation.x += (state.paperReleaseTargetRotX - paperReleaseLeverGroup.rotation.x) * Math.min(1.0, dt * 16.0);
+    bailRodMesh.position.z = state.paperReleased ? 0.61 : 0.54;
   }
 
   return {
     carriageGroup,
     platenRollerGroup,
+    platenMesh,
+    leftKnob,
+    rightKnob,
     returnLeverGroup,
+    leftMarginStopGroup,
+    rightMarginStopGroup,
+    paperReleaseLeverGroup,
     state,
     computeCarriageXForCol,
+    colToLocalPaperX,
+    localPaperXToCol,
     advanceToCol,
     triggerPlatenRecoil,
+    rotatePlatenByLines,
     triggerCarriageReturnMotion,
+    setMarginStopPositions,
+    setPaperReleased,
     updateCarriage
   };
 }
