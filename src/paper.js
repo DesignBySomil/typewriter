@@ -11,7 +11,7 @@ export function createPaperSystem(carriageGroup) {
   paperCanvas.height = CONFIG.paperCanvasH;
   const paperCtx = paperCanvas.getContext('2d');
 
-  // Snapshot canvas preserves the last completed/removed sheet so PRINT / SAVE still works after ejecting a sheet!
+  // Snapshot canvas preserves the last completed/removed sheet so PRINT / SAVE still works after ejecting a sheet
   const lastArchivedCanvas = document.createElement('canvas');
   lastArchivedCanvas.width = CONFIG.paperCanvasW;
   lastArchivedCanvas.height = CONFIG.paperCanvasH;
@@ -21,12 +21,12 @@ export function createPaperSystem(carriageGroup) {
 
   const strikeGrid = new Map();
 
-  let currentCanvasLine = 0;
+  let currentCanvasLine = 0.0;
   let scrollVCurrent = 0.0;
   let scrollVTarget = 0.0;
   let scrollVVel = 0.0;
 
-  // Sheet presence state: 'seated' | 'inserting' | 'ejecting' | 'removed'
+  // Sheet presence state: 'seated' | 'inserting' | 'pulling' | 'settling' | 'ejecting' | 'removed'
   let sheetStatus = 'inserting';
   let insertAnimProgress = 0.0;
 
@@ -43,7 +43,7 @@ export function createPaperSystem(carriageGroup) {
     paperCtx.fillStyle = '#000000';
     paperCtx.fillRect(0, 0, paperCanvas.width, paperCanvas.height);
     strikeGrid.clear();
-    currentCanvasLine = 0;
+    currentCanvasLine = 0.0;
     scrollVCurrent = 0.0;
     scrollVTarget = 0.0;
     scrollVVel = 0.0;
@@ -71,7 +71,8 @@ export function createPaperSystem(carriageGroup) {
   function stampCharacter(char, col, _unusedOffset = 0, ribbonColor = 'black', absoluteLineId = 0) {
     if (sheetStatus === 'removed' || sheetStatus === 'ejecting') return;
 
-    const key = `${absoluteLineId}:${col}`;
+    const lineKey = Math.round(currentCanvasLine);
+    const key = `${absoluteLineId}:${lineKey}:${col}`;
     const prevStrikes = strikeGrid.get(key) || 0;
     strikeGrid.set(key, prevStrikes + 1);
 
@@ -86,7 +87,6 @@ export function createPaperSystem(carriageGroup) {
       fontSizePx = 76;
     }
 
-    // Top-to-bottom line order: line 0 at LINE0_Y (250), line n at LINE0_Y + n * paperLinePxY
     const baselineY = LINE0_Y + currentCanvasLine * CONFIG.paperLinePxY;
 
     const jitterX = (Math.random() - 0.5) * 2.0;
@@ -94,7 +94,6 @@ export function createPaperSystem(carriageGroup) {
     const rotJitter = (Math.random() - 0.5) * 0.032;
     const baseDensity = Math.min(255, Math.floor(228 + Math.random() * 27 + prevStrikes * 35));
 
-    // Support 'black', 'red', and 'stencil' (blind letterpress deboss with zero ink)
     const rVal = ribbonColor === 'black' ? baseDensity : 0;
     const gVal = ribbonColor === 'red'   ? baseDensity : 0;
     const bVal = baseDensity;
@@ -141,12 +140,9 @@ export function createPaperSystem(carriageGroup) {
     paperTexture.needsUpdate = true;
   }
 
-  /**
-   * Advances line index downward on the page and scrolls paper UP around the platen
-   * (negative scrollV per line) so earlier lines move UP above the strike line.
-   */
   function rollCanvasTextUpOneLine() {
     const lineStepV = CONFIG.paperLinePxY / CONFIG.paperCanvasH;
+    currentCanvasLine = Math.round(currentCanvasLine);
 
     if (currentCanvasLine >= MAX_LINE) {
       const dy = CONFIG.paperLinePxY;
@@ -159,26 +155,63 @@ export function createPaperSystem(carriageGroup) {
       paperTexture.needsUpdate = true;
       scrollVCurrent += lineStepV;
     } else {
-      currentCanvasLine++;
+      currentCanvasLine = Math.min(MAX_LINE, currentCanvasLine + 1);
     }
 
-    // Negative scroll moves Texture V down to the new line and shifts earlier lines UP the physical sheet!
     scrollVTarget = -currentCanvasLine * lineStepV;
     scrollVVel -= lineStepV * 4.8;
   }
 
   /**
-   * Supports turning the platen knobs or dragging released paper up/down by fractional or integer lines
+   * Continuous fractional or snapped line scrolling (clamped 0..MAX_LINE).
+   * When `snapToLine` is false (continuous 1:1 knob/roller drag), updates `scrollVCurrent`
+   * immediately so the sheet moves 1:1 with the user's finger.
    */
-  function scrollByLines(deltaLines, snapToLine = true) {
+  function scrollByLines(deltaLines, snapToLine = false) {
     const lineStepV = CONFIG.paperLinePxY / CONFIG.paperCanvasH;
     currentCanvasLine = THREE.MathUtils.clamp(currentCanvasLine + deltaLines, 0, MAX_LINE);
     if (snapToLine) {
       currentCanvasLine = Math.round(currentCanvasLine);
+      scrollVTarget = -currentCanvasLine * lineStepV;
+    } else {
+      scrollVTarget = -currentCanvasLine * lineStepV;
+      scrollVCurrent = scrollVTarget;
+      scrollVVel = 0;
+      paperUniforms.uScrollV.value = scrollVCurrent;
     }
-    scrollVTarget = -currentCanvasLine * lineStepV;
-    paperUniforms.uFeedWave.value = Math.min(1.0, Math.abs(deltaLines) * 0.65);
+    paperUniforms.uFeedWave.value = Math.min(0.85, Math.abs(deltaLines) * 0.45);
     return currentCanvasLine;
+  }
+
+  /**
+   * On pointer release after a continuous platen drag, eases smoothly to the nearest integer line
+   */
+  function snapToNearestLine() {
+    const lineStepV = CONFIG.paperLinePxY / CONFIG.paperCanvasH;
+    currentCanvasLine = THREE.MathUtils.clamp(Math.round(currentCanvasLine), 0, MAX_LINE);
+    scrollVTarget = -currentCanvasLine * lineStepV;
+    return currentCanvasLine;
+  }
+
+  /**
+   * Continuous upward pull-out offset (`pullRatio` = 0..1+).
+   * Maps to `uInsertProgress = 1.0 + pullRatio` in the paper vertex shader.
+   */
+  function setPullOutOffset(pullRatio) {
+    if (sheetStatus === 'removed' || sheetStatus === 'ejecting') return;
+    sheetStatus = 'pulling';
+    insertAnimProgress = 1.0 + Math.max(0, pullRatio);
+    paperUniforms.uInsertProgress.value = insertAnimProgress;
+    paperUniforms.uFeedWave.value = Math.min(1.0, pullRatio * 0.9);
+  }
+
+  /**
+   * Drops the sheet smoothly back into its seat if pulled less than 25% of its height
+   */
+  function settlePulledPaperBack() {
+    if (sheetStatus === 'pulling') {
+      sheetStatus = 'settling';
+    }
   }
 
   const paperUniforms = {
@@ -259,7 +292,7 @@ export function createPaperSystem(carriageGroup) {
     if (sheetStatus === 'removed' || sheetStatus === 'ejecting') return false;
     archiveCurrentCanvasIfInked();
     sheetStatus = 'ejecting';
-    insertAnimProgress = 1.0;
+    insertAnimProgress = Math.max(1.0, insertAnimProgress);
     paperUniforms.uFeedWave.value = 1.3;
     return true;
   }
@@ -284,10 +317,18 @@ export function createPaperSystem(carriageGroup) {
       if (insertAnimProgress >= 1.0) {
         sheetStatus = 'seated';
       }
-    } else if (sheetStatus === 'ejecting') {
-      insertAnimProgress += dt * 2.2;
+    } else if (sheetStatus === 'settling') {
+      insertAnimProgress = Math.max(1.0, insertAnimProgress - dt * 3.2);
       paperUniforms.uInsertProgress.value = insertAnimProgress;
-      if (insertAnimProgress >= 2.2) {
+      if (insertAnimProgress <= 1.001) {
+        insertAnimProgress = 1.0;
+        paperUniforms.uInsertProgress.value = 1.0;
+        sheetStatus = 'seated';
+      }
+    } else if (sheetStatus === 'ejecting') {
+      insertAnimProgress += dt * 2.5;
+      paperUniforms.uInsertProgress.value = insertAnimProgress;
+      if (insertAnimProgress >= 2.25) {
         sheetStatus = 'removed';
         paperMesh.visible = false;
       }
@@ -310,12 +351,16 @@ export function createPaperSystem(carriageGroup) {
     stampCharacter,
     rollCanvasTextUpOneLine,
     scrollByLines,
+    snapToNearestLine,
+    setPullOutOffset,
+    settlePulledPaperBack,
     triggerNewSheetInsert,
     triggerPaperEject,
     getExportSourceCanvas,
-    isSheetPresent: () => sheetStatus === 'seated' || sheetStatus === 'inserting',
+    isSheetPresent: () => sheetStatus === 'seated' || sheetStatus === 'inserting' || sheetStatus === 'pulling' || sheetStatus === 'settling',
     getSheetStatus: () => sheetStatus,
     getCurrentLine: () => Math.round(currentCanvasLine),
+    getFractionalLine: () => currentCanvasLine,
     triggerLineFeedWave,
     updatePaper
   };
