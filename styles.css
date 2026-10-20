@@ -329,3 +329,46 @@ body.hud-hidden #intro-prompt {
     display: none;
   }
 }
+
+
+/* Print / Save menu */
+#print-menu {
+  position: fixed;
+  top: 64px;
+  right: 14px;
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: rgba(16, 18, 20, 0.92);
+  border: 1px solid rgba(114, 214, 201, 0.35);
+  border-radius: 4px;
+  pointer-events: auto;
+}
+#print-menu.open { display: flex; }
+#print-menu .pm-title {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #72d6c9;
+  margin-bottom: 2px;
+}
+@media (max-width: 700px) {
+  #print-menu { top: auto; bottom: 14px; right: 50%; transform: translateX(50%); flex-direction: row; align-items: center; flex-wrap: wrap; justify-content: center; max-width: 94vw; }
+  #print-menu .pm-title { width: 100%; text-align: center; }
+}
+
+#mobile-bar { display: none; }
+@media (max-width: 820px), (max-height: 560px) {
+  #mobile-bar {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 31;
+    display: flex;
+    gap: 6px;
+    pointer-events: auto;
+  }
+  #print-menu { top: 54px; bottom: auto; right: 50%; transform: translateX(50%); flex-direction: row; flex-wrap: wrap; justify-content: center; max-width: 94vw; }
+}
