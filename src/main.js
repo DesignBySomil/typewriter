@@ -300,7 +300,7 @@ const btnPrint = document.getElementById('btn-print');
   printMenu?.classList.toggle('open');
   btn.blur();
 }));
-document.getElementById('btn-kb-m')?.addEventListener('click', () => document.getElementById('mobile-input')?.focus());
+
 document.getElementById('pm-png')?.addEventListener('click', () => { exportSys.savePNG(); printMenu.classList.remove('open'); });
 document.getElementById('pm-pdf')?.addEventListener('click', () => { exportSys.savePDF(); printMenu.classList.remove('open'); });
 document.getElementById('pm-print')?.addEventListener('click', () => { exportSys.printPage(); printMenu.classList.remove('open'); });
