@@ -16,17 +16,13 @@ export const PAPER_VERTEX_SHADER = /* glsl */`
     float heightRatio = clamp(uv.y, 0.0, 1.0);
     vArchFactor = heightRatio;
 
-    // Subtle mechanical flutter when line-feeding or inserting a new sheet
-    float flutter = sin(uv.y * 14.0 - uTime * 22.0) * uFeedWave * 0.038 * heightRatio;
+    // Mechanical wave flutter when line-feeding or inserting a new sheet
+    float flutter = sin(uv.y * 16.0 - uTime * 24.0) * uFeedWave * 0.045 * heightRatio;
 
-    // Soft top-edge curl where the sheet leaves the platen and rises up
-    float topCurl = smoothstep(0.55, 1.0, heightRatio) * pow(max(0.0, heightRatio - 0.55) / 0.45, 1.8) * 0.22;
-    float cornerCurl = pow(abs(uv.x - 0.5) * 2.0, 2.5) * smoothstep(0.7, 1.0, heightRatio) * 0.08;
-
-    // Sheet insertion slide animation (slides up out of the platen on load / new sheet)
-    float slideOffset = (1.0 - uInsertProgress) * 2.4;
+    // Sheet insertion slide animation
+    float slideOffset = (1.0 - uInsertProgress) * 1.85;
     pos.y -= slideOffset * heightRatio;
-    pos.z += flutter - topCurl + cornerCurl;
+    pos.z += flutter;
 
     vec4 worldPos = modelMatrix * vec4(pos, 1.0);
     vWorldPos = worldPos.xyz;
@@ -63,22 +59,21 @@ export const PAPER_FRAGMENT_SHADER = /* glsl */`
   }
 
   void main() {
-    // Hero Paper Mapping:
-    // vUv.y = 0.30 sits clearly above the platen & paper bail bar in full camera view!
-    // At vUv.y = 0.30, we map to the active typing baseline on the 2048px canvas:
-    // paperActiveLineCanvasY = 1850 -> from top = 1850 / 2048 = 0.9033 -> Texture V (flipY=true) = 1.0 - 0.9033 = 0.0967.
-    // Scale factor 0.62 maps the visible upper sheet (vUv.y: 0.30 -> 1.0) across ~12 previous lines (each 74px = 0.0361 V),
-    // making every single character large, crisp, and effortlessly legible at 1280x800!
+    // Hero Paper Mapping (55% visible height above platen):
+    // vUv.y = 0.30 is the active print line sitting right above the platen & paper bail bar.
+    // At vUv.y = 0.30, Line 0 maps to paperLine0CanvasY = 1850 -> Texture V (flipY=true) = 1.0 - (1850/2048) = 0.0967.
+    // As lines are added, uScrollV decreases smoothly with ratchet overshoot, rolling the text UP the sheet
+    // so older lines glide smoothly off the curled top edge!
     float vFromPrintPoint = vUv.y - 0.30;
-    float texV = 0.0967 + vFromPrintPoint * 0.62 + uScrollV;
+    float texV = 0.0967 + vFromPrintPoint * 0.42 + uScrollV;
     vec2 texUv = vec2(vUv.x, texV);
 
     // Multi-octave warm cotton paper fiber noise (filtered by derivative to stay silky smooth)
-    vec2 fiberCoord = vUv * vec2(140.0, 175.0);
+    vec2 fiberCoord = vUv * vec2(135.0, 160.0);
     float fw = length(fwidth(fiberCoord));
     float fiberFade = 1.0 - smoothstep(0.35, 1.2, fw);
     float f1 = noise(fiberCoord);
-    float f2 = noise(vUv * vec2(310.0, 85.0));
+    float f2 = noise(vUv * vec2(290.0, 80.0));
     float fiber = ((f1 * 0.65 + f2 * 0.35) - 0.5) * fiberFade;
 
     // Sample RGBA CanvasTexture:
@@ -100,40 +95,42 @@ export const PAPER_FRAGMENT_SHADER = /* glsl */`
 
     float hC = cC.b;
 
-    // Realistic ink bleed: darker crisp core with a softer feathered halo into paper fibers
+    // Darker crisp ink core with softer feathered halo into paper fibers
     float neighborAvg = (hL + hR + hD + hU) * 0.25;
     float haloMask = clamp(neighborAvg * 0.85 + fiber * 0.25 * neighborAvg, 0.0, 1.0);
-    float coreMask = smoothstep(0.22, 0.72, hC);
+    float coreMask = smoothstep(0.20, 0.70, hC);
     float inkMask  = clamp(max(coreMask, haloMask * 0.68), 0.0, 1.0);
 
     // Finite-difference normal perturbation for visible letterpress deboss indentation
-    float dX = (hR - hL) * 6.5 + fiber * 0.10;
-    float dY = (hU - hD) * 6.5 + fiber * 0.10;
-    vec3 perturbedNormal = normalize(vWorldNormal + vec3(-dX, -dY, 0.0) * 0.52);
+    float dX = (hR - hL) * 6.8 + fiber * 0.10;
+    float dY = (hU - hD) * 6.8 + fiber * 0.10;
+    vec3 perturbedNormal = normalize(vWorldNormal + vec3(-dX, -dY, 0.0) * 0.55);
 
-    // Warm archival cotton paper color + subtle edge shading
-    vec3 paperCol = vec3(0.972, 0.942, 0.875) + fiber * 0.026;
+    // Warm archival cotton paper color + top-edge curl shading
+    vec3 paperCol = vec3(0.974, 0.945, 0.880) + fiber * 0.026;
     float sideEdge = smoothstep(0.0, 0.025, vUv.x) * smoothstep(1.0, 0.975, vUv.x);
-    float topEdge  = smoothstep(1.0, 0.96, vUv.y);
-    paperCol *= (0.93 + 0.07 * sideEdge * topEdge);
+    float topCurlShade = 1.0 - smoothstep(0.76, 1.0, vUv.y) * 0.10;
+    paperCol *= (0.93 + 0.07 * sideEdge) * topCurlShade;
 
-    // Rich carbon-black ink (darker core, warm charcoal halo) & crimson bichrome red ink
+    // Rich carbon-black ink & crimson bichrome red ink
     float redRatio = clamp(cC.g / max(0.001, cC.r + cC.g), 0.0, 1.0);
-    vec3 blackInk = mix(vec3(0.20, 0.18, 0.16), vec3(0.015, 0.015, 0.02), coreMask);
+    vec3 blackInk = mix(vec3(0.18, 0.16, 0.14), vec3(0.012, 0.012, 0.016), coreMask);
     vec3 redInk   = mix(vec3(0.75, 0.20, 0.15), vec3(0.42, 0.04, 0.03), coreMask);
     vec3 inkCol   = mix(blackInk, redInk, redRatio);
 
-    vec3 baseAlbedo = mix(paperCol, inkCol, smoothstep(0.04, 0.52, inkMask));
+    vec3 baseAlbedo = mix(paperCol, inkCol, smoothstep(0.04, 0.50, inkMask));
 
     // Directional studio lighting + letterpress deboss highlight/shadow bevel
     float diff = max(dot(perturbedNormal, uLightDir), 0.0);
-    float debossBevel = clamp((hU - hD) * 2.8 + (hL - hR) * 1.9, -0.32, 0.35);
+    float debossBevel = clamp((hU - hD) * 2.9 + (hL - hR) * 1.9, -0.34, 0.36);
 
-    // Soft shadow cast by the platen & bail bar onto the lower curve of the paper
-    float platenCurveShadow = smoothstep(0.06, 0.28, vArchFactor) * 0.32 + 0.68;
-    float bailShadow = 1.0 - exp(-pow((vArchFactor - 0.245) * 42.0, 2.0)) * 0.18;
+    // Soft contact shadow from the platen & paper bail onto the paper just below and above the print line
+    float platenWrapShadow = smoothstep(0.05, 0.27, vArchFactor) * 0.34 + 0.66;
+    float bailContactShadow = 1.0 - exp(-pow((vArchFactor - 0.255) * 32.0, 2.0)) * 0.26;
+    float abovePrintSoftShadow = 1.0 - exp(-pow((vArchFactor - 0.335) * 20.0, 2.0)) * 0.11;
 
-    vec3 finalCol = baseAlbedo * (0.54 + diff * 0.52) * platenCurveShadow * bailShadow + vec3(debossBevel * 0.18);
+    vec3 finalCol = baseAlbedo * (0.56 + diff * 0.50) * platenWrapShadow * bailContactShadow * abovePrintSoftShadow
+                  + vec3(debossBevel * 0.19);
     gl_FragColor = vec4(finalCol, 1.0);
   }
 `;
