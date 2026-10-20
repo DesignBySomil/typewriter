@@ -4,17 +4,18 @@ import { CONFIG } from './config.js';
 /**
  * Builds the moving Carriage assembly (rubber platen cylinder, dual knurled knobs,
  * rear paper support table, graduated paper bail bar, and clickable left carriage return lever)
- * and manages 1:1 horizontal escapement translation, margin lock, and line-feed rotation.
+ * and manages 1:1 horizontal escapement translation for the 46-column hero sheet.
  */
 export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   const { enamelBodyMat, darkSteelMat, chromeMat, rubberMat } = materials;
 
   const carriageGroup = new THREE.Group();
 
-  // At column 0, local paper X of col 0 is `-30.5 * charStepWorld`.
-  // Placing carriageGroup at `+30.5 * charStepWorld` puts column 0 dead-center at world X = 0!
+  // For 46 columns (0..45), column 0 sits at local paper X = `-22.5 * charStepWorld`.
+  // Placing carriageGroup at `+22.5 * charStepWorld` puts column 0 dead-center at world X = 0!
   function computeCarriageXForCol(col) {
-    return (30.5 - col) * CONFIG.charStepWorld;
+    const centerCol = (CONFIG.maxCols - 1) * 0.5; // 22.5
+    return (centerCol - col) * CONFIG.charStepWorld;
   }
 
   const startX = computeCarriageXForCol(0);
@@ -73,26 +74,26 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   rightCarriagePlate.castShadow = true;
   carriageGroup.add(rightCarriagePlate);
 
-  const paperTableGeo = new THREE.BoxGeometry(CONFIG.platenLength, 2.5, 0.10);
+  const paperTableGeo = new THREE.BoxGeometry(CONFIG.platenLength, 2.75, 0.10);
   const paperTableMesh = new THREE.Mesh(paperTableGeo, enamelBodyMat);
-  paperTableMesh.position.set(0, 1.22, -0.92);
-  paperTableMesh.rotation.x = -0.24;
+  paperTableMesh.position.set(0, 1.32, -0.92);
+  paperTableMesh.rotation.x = -0.22;
   paperTableMesh.castShadow = true;
   paperTableMesh.receiveShadow = true;
   carriageGroup.add(paperTableMesh);
 
-  // 3. Chrome Paper Bail Rod & Rollers
-  const bailRodGeo = new THREE.CylinderGeometry(0.042, 0.042, CONFIG.platenLength, 16);
+  // 3. Chrome Paper Bail Rod & Rollers (positioned snugly so the typed line sits clearly above it)
+  const bailRodGeo = new THREE.CylinderGeometry(0.038, 0.038, CONFIG.platenLength, 16);
   bailRodGeo.rotateZ(Math.PI / 2);
   const bailRodMesh = new THREE.Mesh(bailRodGeo, chromeMat);
-  bailRodMesh.position.set(0, 0.44, 0.52);
+  bailRodMesh.position.set(0, 0.24, 0.60);
   carriageGroup.add(bailRodMesh);
 
   [-2.9, 0, 2.9].forEach((rx) => {
-    const rGeo = new THREE.CylinderGeometry(0.10, 0.10, 0.26, 16);
+    const rGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.24, 16);
     rGeo.rotateZ(Math.PI / 2);
     const rMesh = new THREE.Mesh(rGeo, rubberMat);
-    rMesh.position.set(rx, 0.44, 0.52);
+    rMesh.position.set(rx, 0.24, 0.60);
     carriageGroup.add(rMesh);
   });
 
@@ -133,41 +134,37 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     returnLeverSwing: 0
   };
 
-  function advanceToCol(col, overshootImpulse = -0.45) {
+  function advanceToCol(col, overshootImpulse = -0.48) {
     state.targetX = computeCarriageXForCol(col);
     state.velX += overshootImpulse;
   }
 
   function triggerPlatenRecoil() {
-    state.platenRecoilZ = -0.036;
+    state.platenRecoilZ = -0.038;
   }
 
   function triggerCarriageReturnMotion() {
     state.targetX = computeCarriageXForCol(0);
-    state.velX += 1.55; // Strong return slide impulse with soft end-bounce
+    state.velX += 1.65;
     state.returnLeverSwing = 0.58;
-    state.platenTargetRotX -= 0.38;
-    state.platenWobble = 0.06;
+    state.platenTargetRotX -= 0.42;
+    state.platenWobble = 0.065;
   }
 
   function updateCarriage(dt) {
-    // Spring-damper carriage translation with realistic inertia & end-of-return bounce
     const stiffness = 195.0;
     const damping = 17.5;
     const forceX = (state.targetX - carriageGroup.position.x) * stiffness;
     state.velX = (state.velX + forceX * dt) * Math.exp(-damping * dt);
     carriageGroup.position.x += state.velX * dt;
 
-    // Platen rotation + ratchet wobble
     state.platenCurrentRotX += (state.platenTargetRotX - state.platenCurrentRotX) * Math.min(1.0, dt * 15.0);
     state.platenWobble *= Math.exp(-dt * 12.0);
     platenRollerGroup.rotation.x = state.platenCurrentRotX + Math.sin(performance.now() * 0.05) * state.platenWobble;
 
-    // Platen strike recoil recovery
     state.platenRecoilZ += (0.0 - state.platenRecoilZ) * Math.min(1.0, dt * 28.0);
     platenRollerGroup.position.z = state.platenRecoilZ;
 
-    // Carriage return lever spring back
     state.returnLeverSwing *= Math.exp(-dt * 9.5);
     returnLeverGroup.rotation.y = state.returnLeverSwing;
   }
