@@ -10,9 +10,17 @@ export function createPaperSystem(carriageGroup) {
 
   const strikeGrid = new Map();
 
+  // Page reads top to bottom: line n sits LOWER on the canvas than line n-1.
+  // Carriage return rolls the paper UP, so earlier lines move up and the new line is below them.
+  const LINE0_Y = 250;
+  const MAX_LINE = Math.floor((1990 - LINE0_Y) / CONFIG.paperLinePxY);
+  const V_PRINT = 0.0967; // texture v the shader shows at the strike line when scroll is 0
+  const vOfLine = (n) => 1.0 - (LINE0_Y + n * CONFIG.paperLinePxY) / CONFIG.paperCanvasH;
+  const scrollForLine = (n) => vOfLine(n) - V_PRINT;
+
   let currentCanvasLine = 0;
-  let scrollVCurrent = 0.0;
-  let scrollVTarget = 0.0;
+  let scrollVCurrent = scrollForLine(0);
+  let scrollVTarget = scrollForLine(0);
   let scrollVVel = 0.0;
 
   function clearPaperCanvas() {
@@ -20,8 +28,8 @@ export function createPaperSystem(carriageGroup) {
     paperCtx.fillRect(0, 0, paperCanvas.width, paperCanvas.height);
     strikeGrid.clear();
     currentCanvasLine = 0;
-    scrollVCurrent = 0.0;
-    scrollVTarget = 0.0;
+    scrollVCurrent = scrollForLine(0);
+    scrollVTarget = scrollForLine(0);
     scrollVVel = 0.0;
   }
   clearPaperCanvas();
@@ -58,7 +66,7 @@ export function createPaperSystem(carriageGroup) {
       fontSizePx = 76;
     }
 
-    const baselineY = CONFIG.paperLine0CanvasY - currentCanvasLine * CONFIG.paperLinePxY;
+    const baselineY = LINE0_Y + currentCanvasLine * CONFIG.paperLinePxY;
 
     const jitterX = (Math.random() - 0.5) * 2.0;
     const jitterY = (Math.random() - 0.5) * 2.8;
@@ -114,22 +122,23 @@ export function createPaperSystem(carriageGroup) {
   function rollCanvasTextUpOneLine() {
     const lineStepV = CONFIG.paperLinePxY / CONFIG.paperCanvasH;
 
-    if (currentCanvasLine >= 22) {
+    if (currentCanvasLine >= MAX_LINE) {
+      // Page is full on the canvas: slide the written text up, keep striking at the bottom line.
       const dy = CONFIG.paperLinePxY;
       const w = paperCanvas.width;
       const h = paperCanvas.height;
-      const imageData = paperCtx.getImageData(0, 0, w, h - dy);
+      const imageData = paperCtx.getImageData(0, dy, w, h - dy);
       paperCtx.fillStyle = '#000000';
       paperCtx.fillRect(0, 0, w, h);
-      paperCtx.putImageData(imageData, 0, dy);
+      paperCtx.putImageData(imageData, 0, 0);
       paperTexture.needsUpdate = true;
-      scrollVCurrent += lineStepV;
+      scrollVCurrent += lineStepV; // content jumped up one line; spring eases the view back
     } else {
       currentCanvasLine++;
     }
 
-    scrollVTarget = currentCanvasLine * lineStepV;
-    scrollVVel += lineStepV * 4.8;
+    scrollVTarget = scrollForLine(currentCanvasLine);
+    scrollVVel -= lineStepV * 4.8;
   }
 
   const paperUniforms = {
@@ -231,6 +240,7 @@ export function createPaperSystem(carriageGroup) {
 
   return {
     paperMesh,
+    paperCanvas,
     paperUniforms,
     stampCharacter,
     rollCanvasTextUpOneLine,
