@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /**
  * Deep glossy green-black or dark steel enamel material:
  * - Zero high-frequency pixel hash / moire (smooth derivative-filtered low-frequency variation only)
- * - Soft studio dome reflection gradient + crisp clearcoat specular streak
+ * - Soft studio dome reflection gradient + crisp clearcoat specular streak from upper-left warm lamp
  */
 export function createEnamelMaterial({
   baseColor = 0x0b1f17,
@@ -47,7 +47,6 @@ export function createEnamelMaterial({
          varying vec3 vEnamelWorldPos;
          varying vec3 vEnamelWorldNormal;
 
-         // Smooth low-frequency value noise with derivative fade (no high-frequency moire)
          float smoothEnamelNoise(vec2 p) {
            vec2 i = floor(p);
            vec2 f = fract(p);
@@ -67,29 +66,29 @@ export function createEnamelMaterial({
          float fresnel = pow(1.0 - ndotv, 2.7);
 
          // Smooth low-frequency coat variation attenuated by screen-space derivatives
-         vec2 coatUv = vEnamelWorldPos.xz * 2.2;
+         vec2 coatUv = vEnamelWorldPos.xz * 2.0;
          float fw = length(fwidth(coatUv));
          float fade = 1.0 - smoothstep(0.15, 0.65, fw);
-         float lowWave = (smoothEnamelNoise(coatUv) - 0.5) * 0.025 * fade;
+         float lowWave = (smoothEnamelNoise(coatUv) - 0.5) * 0.022 * fade;
 
          // Soft studio dome reflection gradient
          vec3 refl = reflect(-viewDirW, nW);
          float envGrad = smoothstep(-0.35, 0.85, refl.y + lowWave);
          vec3 envCol = mix(vec3(0.04, 0.06, 0.07), uFresnelTint, envGrad);
 
-         // Long glossy clearcoat specular streak + tight key highlight
-         vec3 keyDir = normalize(vec3(5.5, 11.5, 8.5));
-         vec3 halfVec = normalize(keyDir + viewDirW);
-         float ndoth = max(dot(nW, halfVec), 0.0);
-         float coatStreak = pow(ndoth, 28.0) * 0.24 * uClearcoatBoost;
-         float coatCore   = pow(ndoth, 140.0) * 0.78 * uClearcoatBoost;
+         // Clearcoat specular streak from upper-left warm lamp + front studio fill
+         vec3 lampDir = normalize(vec3(-8.5, 10.5, 4.8));
+         vec3 fillDir = normalize(vec3(3.5, 9.0, 9.0));
+         float ndoth1 = max(dot(nW, normalize(lampDir + viewDirW)), 0.0);
+         float ndoth2 = max(dot(nW, normalize(fillDir + viewDirW)), 0.0);
+         float coatStreak = (pow(ndoth1, 26.0) * 0.22 + pow(ndoth2, 32.0) * 0.16) * uClearcoatBoost;
+         float coatCore   = (pow(ndoth1, 130.0) * 0.72 + pow(ndoth2, 140.0) * 0.45) * uClearcoatBoost;
 
-         // Upward-facing studio sky lift so dark green body contours read cleanly
          float skyLift = smoothstep(-0.2, 1.0, nW.y) * 0.085;
 
          gl_FragColor.rgb += envCol * (0.14 + fresnel * 0.66)
                            + uFresnelTint * skyLift
-                           + vec3(1.0, 0.96, 0.88) * (coatStreak + coatCore);
+                           + vec3(1.0, 0.94, 0.84) * (coatStreak + coatCore);
          #include <dithering_fragment>`
       );
   };
@@ -98,12 +97,12 @@ export function createEnamelMaterial({
 }
 
 /**
- * Brighter brushed chrome material with a crisp studio highlight line & derivative-filtered brushing
+ * Brighter brushed chrome material with a crisp studio highlight line & faint chromatic reflection dispersion
  */
 export function createChromeMaterial() {
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xf4f1ea,
-    roughness: 0.10,
+    color: 0xf5f2eb,
+    roughness: 0.09,
     metalness: 0.94
   });
 
@@ -135,21 +134,35 @@ export function createChromeMaterial() {
          vec3 nDir = normalize(vChromeWorldNormal);
          vec3 rDir = reflect(-vDir, nDir);
 
-         // Derivative-filtered subtle brushing so it never aliases
+         // Derivative-filtered subtle brushing
          float coord = vChromeWorldPos.x * 32.0 + rDir.y * 5.0;
          float fw = fwidth(coord);
          float brushFade = 1.0 - smoothstep(0.4, 1.8, fw);
-         float aniso = sin(coord) * 0.04 * brushFade;
+         float aniso = sin(coord) * 0.035 * brushFade;
 
          float horizon = sin(rDir.y * 5.2 + rDir.x * 1.8) * 0.5 + 0.5 + aniso;
          vec3 studioSky = mix(vec3(0.24, 0.27, 0.32), vec3(1.0, 0.98, 0.92), smoothstep(0.18, 0.78, horizon));
 
-         // Crisp bright specular highlight line along chrome trim
-         vec3 keyDir = normalize(vec3(4.5, 11.0, 8.5));
-         float specLine = pow(max(dot(nDir, normalize(keyDir + vDir)), 0.0), 96.0) * 0.85;
+         // Faint chromatic dispersion reflection line along the chrome trim
+         vec3 lampDir = normalize(vec3(-7.5, 10.5, 6.0));
+         vec3 halfVec = normalize(lampDir + vDir);
+         float specAngle = max(dot(nDir, halfVec), 0.0);
+         float specR = pow(clamp(specAngle + 0.0045, 0.0, 1.0), 110.0);
+         float specG = pow(specAngle, 110.0);
+         float specB = pow(clamp(specAngle - 0.0045, 0.0, 1.0), 110.0);
+         vec3 chromaticLine = vec3(specR * 1.08, specG * 0.98, specB * 1.15) * 0.92;
+
+         // Secondary subtle rainbow dispersion band on grazing reflection
+         float chromaBand = rDir.y * 8.0 + rDir.x * 2.5;
+         vec3 prismTint = vec3(
+           smoothstep(0.35, 0.75, sin(chromaBand + 0.35)),
+           smoothstep(0.35, 0.75, sin(chromaBand)),
+           smoothstep(0.35, 0.75, sin(chromaBand - 0.35))
+         ) * 0.14;
+
          float fres = pow(1.0 - clamp(dot(nDir, vDir), 0.0, 1.0), 2.0);
 
-         gl_FragColor.rgb = mix(gl_FragColor.rgb, studioSky, 0.55 + fres * 0.35) + vec3(1.0, 0.97, 0.90) * specLine;
+         gl_FragColor.rgb = mix(gl_FragColor.rgb, studioSky + prismTint, 0.56 + fres * 0.35) + chromaticLine;
          #include <dithering_fragment>`
       );
   };
