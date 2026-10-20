@@ -15,18 +15,18 @@ function createBakedContactShadowTexture() {
 
   ctx.clearRect(0, 0, 512, 512);
 
-  // Soft elliptical body ambient occlusion shadow
+  // Gentle elliptical body ambient occlusion shadow
   ctx.save();
   ctx.translate(256, 268);
   ctx.scale(1.18, 0.96);
-  const bodyGrad = ctx.createRadialGradient(0, 0, 20, 0, 0, 195);
-  bodyGrad.addColorStop(0.0, 'rgba(5, 4, 4, 0.88)');
-  bodyGrad.addColorStop(0.55, 'rgba(6, 5, 4, 0.62)');
-  bodyGrad.addColorStop(0.82, 'rgba(8, 7, 6, 0.18)');
-  bodyGrad.addColorStop(1.0, 'rgba(8, 7, 6, 0.0)');
+  const bodyGrad = ctx.createRadialGradient(0, 0, 24, 0, 0, 205);
+  bodyGrad.addColorStop(0.0, 'rgba(8, 6, 5, 0.82)');
+  bodyGrad.addColorStop(0.55, 'rgba(10, 8, 6, 0.54)');
+  bodyGrad.addColorStop(0.82, 'rgba(12, 10, 8, 0.16)');
+  bodyGrad.addColorStop(1.0, 'rgba(12, 10, 8, 0.0)');
   ctx.fillStyle = bodyGrad;
   ctx.beginPath();
-  ctx.arc(0, 0, 195, 0, Math.PI * 2);
+  ctx.arc(0, 0, 205, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
@@ -38,13 +38,13 @@ function createBakedContactShadowTexture() {
     [394, 365]
   ];
   feetCoords.forEach(([fx, fy]) => {
-    const fGrad = ctx.createRadialGradient(fx, fy, 2, fx, fy, 34);
-    fGrad.addColorStop(0.0, 'rgba(2, 2, 2, 0.92)');
-    fGrad.addColorStop(0.5, 'rgba(4, 3, 3, 0.45)');
-    fGrad.addColorStop(1.0, 'rgba(4, 3, 3, 0.0)');
+    const fGrad = ctx.createRadialGradient(fx, fy, 2, fx, fy, 36);
+    fGrad.addColorStop(0.0, 'rgba(3, 2, 2, 0.90)');
+    fGrad.addColorStop(0.5, 'rgba(6, 5, 4, 0.42)');
+    fGrad.addColorStop(1.0, 'rgba(6, 5, 4, 0.0)');
     ctx.fillStyle = fGrad;
     ctx.beginPath();
-    ctx.arc(fx, fy, 34, 0, Math.PI * 2);
+    ctx.arc(fx, fy, 36, 0, Math.PI * 2);
     ctx.fill();
   });
 
@@ -61,7 +61,7 @@ export function createSceneSystem(container) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.90;
+  renderer.toneMappingExposure = 0.92;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.autoClear = false;
   container.appendChild(renderer.domElement);
@@ -95,14 +95,14 @@ export function createSceneSystem(container) {
   const camera = new THREE.PerspectiveCamera(29, window.innerWidth / window.innerHeight, 0.1, 160);
 
   // 3. Photographic Studio Lighting
-  const hemiBounce = new THREE.HemisphereLight(0xefe6d8, 0x2a2623, 0.55);
+  const hemiBounce = new THREE.HemisphereLight(0xf2e8d8, 0x362d26, 0.62);
   hemiBounce.position.set(0, 10, 0);
   scene.add(hemiBounce);
 
-  const softboxSpot = new THREE.SpotLight(0xfff0dd, 2.35);
+  const softboxSpot = new THREE.SpotLight(0xfff0dd, 2.38);
   softboxSpot.position.set(-8.5, 11.5, 6.2);
   softboxSpot.target.position.set(0, 1.5, 0.5);
-  softboxSpot.angle = Math.PI * 0.42;
+  softboxSpot.angle = Math.PI * 0.44;
   softboxSpot.penumbra = 0.95;
   softboxSpot.decay = 0.0;
   softboxSpot.distance = 45.0;
@@ -115,11 +115,11 @@ export function createSceneSystem(container) {
   scene.add(softboxSpot);
   scene.add(softboxSpot.target);
 
-  const weakCoolFill = new THREE.DirectionalLight(0x90a8bd, 0.45);
+  const weakCoolFill = new THREE.DirectionalLight(0x90a8bd, 0.46);
   weakCoolFill.position.set(8.5, 6.0, -4.0);
   scene.add(weakCoolFill);
 
-  const tableBounce = new THREE.DirectionalLight(0xcab69c, 0.35);
+  const tableBounce = new THREE.DirectionalLight(0xd4bc9e, 0.40);
   tableBounce.position.set(0.0, -5.0, 5.5);
   scene.add(tableBounce);
 
@@ -127,10 +127,10 @@ export function createSceneSystem(container) {
   basketLight.position.set(0, 2.7, 0.7);
   scene.add(basketLight);
 
-  // 4. Seamless Dark Matte Desk-Mat Plane
+  // 4. Warm Matte Tabletop Surface under and around the machine (never empty black in portrait!)
   const tableMat = new THREE.MeshStandardMaterial({
-    color: 0x161412,
-    roughness: 0.94,
+    color: 0x261e18,
+    roughness: 0.92,
     metalness: 0.0,
     envMapIntensity: 0.08
   });
@@ -153,24 +153,29 @@ export function createSceneSystem(container) {
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-         vec2 wp = vWorldPosTable.xz * vec2(5.5, 5.5);
+         // Fine warm walnut/linen desk texture
+         vec2 wp = vWorldPosTable.xz * vec2(2.2, 7.5);
          float fw = length(fwidth(wp));
          float grainFade = 1.0 - smoothstep(0.3, 1.4, fw);
-         float linenWeave = (tblNoise(wp) * 0.5 + tblNoise(wp * 2.3) * 0.5 - 0.5) * grainFade;
+         float woodFiber = (tblNoise(wp) * 0.6 + tblNoise(wp * 2.4) * 0.4 - 0.5) * grainFade;
+         float crossWeave = (tblNoise(vWorldPosTable.xz * 5.0) - 0.5) * 0.4 * grainFade;
 
-         vec3 baseDesk = vec3(0.078, 0.070, 0.064) + vec3(0.008, 0.007, 0.006) * linenWeave;
+         vec3 baseDesk = vec3(0.125, 0.098, 0.076) + vec3(0.018, 0.013, 0.009) * (woodFiber + crossWeave);
 
-         float distPool = length((vWorldPosTable.xz - vec2(-0.8, 0.5)) * vec2(0.55, 0.65));
-         float warmPool = exp(-distPool * distPool * 0.025);
-         vec3 litDesk = baseDesk + vec3(0.032, 0.028, 0.023) * warmPool;
+         // Broad warm pool of light illuminating the table in front of and behind the machine
+         float distPool = length((vWorldPosTable.xz - vec2(-0.5, 2.2)) * vec2(0.42, 0.36));
+         float warmPool = exp(-distPool * distPool * 0.022);
+         vec3 litDesk = baseDesk + vec3(0.068, 0.050, 0.034) * warmPool;
 
+         // Gentle rightward shadow lobe from upper-left softbox
          vec2 rightShadowDelta = (vWorldPosTable.xz - vec2(3.8, -0.5)) * vec2(0.18, 0.28);
          float rightShadow = exp(-dot(rightShadowDelta, rightShadowDelta));
-         float castLobeAO = 1.0 - rightShadow * 0.34;
+         float castLobeAO = 1.0 - rightShadow * 0.28;
 
-         float radialDist = length(vWorldPosTable.xz * vec2(0.55, 0.55));
-         float outerFade = smoothstep(26.0, 4.5, radialDist);
-         vec3 bgEdgeTone = vec3(0.028, 0.025, 0.022);
+         // Smooth outer vignette so table blends seamlessly with background at far distances
+         float radialDist = length((vWorldPosTable.xz - vec2(0.0, 2.0)) * vec2(0.45, 0.38));
+         float outerFade = smoothstep(28.0, 6.0, radialDist);
+         vec3 bgEdgeTone = vec3(0.045, 0.038, 0.033);
 
          diffuseColor.rgb = mix(bgEdgeTone, litDesk * castLobeAO, outerFade);`
       );
@@ -187,9 +192,9 @@ export function createSceneSystem(container) {
     map: createBakedContactShadowTexture(),
     transparent: true,
     depthWrite: false,
-    opacity: 0.92
+    opacity: 0.88
   });
-  const aoPlane = new THREE.Mesh(new THREE.PlaneGeometry(13.2, 11.4), aoPlaneMat);
+  const aoPlane = new THREE.Mesh(new THREE.PlaneGeometry(13.4, 11.6), aoPlaneMat);
   aoPlane.rotation.x = -Math.PI / 2;
   aoPlane.position.set(0, 0.005, 0.72);
   scene.add(aoPlane);
@@ -201,20 +206,19 @@ export function createSceneSystem(container) {
   const relVec = new THREE.Vector3();
 
   /**
-   * Responsive Camera Composition:
-   * - Portrait phones (390x780, 430x932; aspect < 0.92):
-   *   Uses a narrower 24° vertical FOV and horizontal aspect fit on the machine's physical width
-   *   (including both ribbed knobs at ±5.80 world units) so the machine fills ~96% of the screen width!
-   *   Moves the camera closer and lower at a 3/4 angle aimed near the printing point, shifting the
-   *   composition so the machine sits slightly below centre with the full paper sheet rising above.
-   * - Desktop (1280x800) & Landscape phones (844x390):
-   *   Unchanged 8-corner bounding-box fit with ~6% margin on all sides.
+   * Exact 8-Corner View-Space Bounding-Box Fit:
+   * - Portrait phones (390x780, 430x932):
+   *   Fits the full width including both ribbed knobs (`X: [-6.12, +6.12]`) with ~4% side margin on both sides
+   *   (`marginScale = 1.09`), and automatically centers the vertical span (from sheet top `Y = 5.82` to
+   *   front base edge `Y = 0.0, Z = 4.95`) so there is equal space above and below the machine!
+   * - Desktop (1280x800) & Landscape phones:
+   *   Unchanged 8-corner bounding-box fit with ~6% margin.
    */
   function computeFittedCameraPose() {
     const aspect = window.innerWidth / Math.max(1, window.innerHeight);
     const isPortrait = aspect < 0.92;
 
-    const targetFov = isPortrait ? 24 : 29;
+    const targetFov = isPortrait ? 25 : 29;
     if (camera.fov !== targetFov) {
       camera.fov = targetFov;
       camera.updateProjectionMatrix();
@@ -224,40 +228,20 @@ export function createSceneSystem(container) {
     const tanHalfVFov = Math.tan(vFovRad * 0.5);
     const tanHalfHFov = tanHalfVFov * aspect;
 
-    if (isPortrait) {
-      // Closer, lower 3/4 angle looking at the printing point & upper keyboard deck
-      const viewDir = new THREE.Vector3(0.0, 0.47, 0.882).normalize();
-      rightAxis.crossVectors(worldUp, viewDir).normalize();
-      upAxis.crossVectors(viewDir, rightAxis).normalize();
+    const viewDir = isPortrait
+      ? new THREE.Vector3(0.0, 0.49, 0.872).normalize()
+      : new THREE.Vector3(0.02, 0.54, 0.841).normalize();
 
-      // Machine body + platen + both ribbed knobs span [-5.80, +5.80] = 11.60 world units.
-      // To make 11.60 world units fill ~96% of the viewport width (margin factor 1 / 0.96 = 1.0417):
-      const halfWidthAtPlaten = 5.80;
-      const platenZOffset = -1.65; // Platen is slightly behind lookAt along viewDir
-      const distForWidth96 = (halfWidthAtPlaten * 1.042) / tanHalfHFov + platenZOffset;
-
-      // Also verify vertical fit so neither paper top nor spacebar clips on shorter portrait ratios
-      const halfHeightSpan = 3.25;
-      const distForHeight = (halfHeightSpan * 1.06) / tanHalfVFov;
-      const distance = Math.max(distForWidth96, distForHeight);
-
-      // Shift lookAt slightly higher (Y = 2.46) so the machine sits slightly below center with the sheet above
-      const lookAt = new THREE.Vector3(0.0, 2.46, 0.95);
-      const pos = lookAt.clone().addScaledVector(viewDir, distance);
-      return { pos, lookAt };
-    }
-
-    // Desktop & Landscape Phone (Unchanged 8-corner view-space bounding-box fit)
-    const viewDir = new THREE.Vector3(0.02, 0.54, 0.841).normalize();
     rightAxis.crossVectors(worldUp, viewDir).normalize();
     upAxis.crossVectors(viewDir, rightAxis).normalize();
 
-    const minX = -6.65;
-    const maxX =  6.85;
+    // On portrait, carriage + both knobs span [-6.12, +6.12]; on desktop, full travel spans [-6.65, +6.85]
+    const minX = isPortrait ? -6.12 : -6.65;
+    const maxX = isPortrait ?  6.12 :  6.85;
     const minY =  0.0;
-    const maxY = CONFIG.machineBoundsMax.y; // 5.82
+    const maxY = CONFIG.machineBoundsMax.y; // 5.82 (top of curled sheet)
     const minZ = -2.65;
-    const maxZ =  5.05;
+    const maxZ =  4.95; // Front edge of the base
 
     const center = new THREE.Vector3(
       (minX + maxX) * 0.5,
@@ -278,12 +262,14 @@ export function createSceneSystem(container) {
       }
     }
 
-    const marginScale = 1.135;
+    // Portrait: ~4% side margin on each side -> usable half-width = 0.918 -> marginScale = 1 / 0.918 = 1.09
+    // Desktop: ~6% margin on all sides -> marginScale = 1.135
+    const marginScale = isPortrait ? 1.09 : 1.135;
     let distance = 14.0;
     let shiftRight = 0;
     let shiftUp = 0;
 
-    for (let iter = 0; iter < 3; iter++) {
+    for (let iter = 0; iter < 4; iter++) {
       let reqDist = 8.0;
       let minProjX = Infinity, maxProjX = -Infinity;
       let minProjY = Infinity, maxProjY = -Infinity;
@@ -294,18 +280,24 @@ export function createSceneSystem(container) {
         const yCam = relVec.dot(upAxis) - shiftUp;
         const zCam = relVec.dot(viewDir);
 
-        minProjX = Math.min(minProjX, xCam);
-        maxProjX = Math.max(maxProjX, xCam);
-        minProjY = Math.min(minProjY, yCam);
-        maxProjY = Math.max(maxProjY, yCam);
+        // Perspective-corrected apparent screen coordinates
+        const effDist = Math.max(2.0, distance - zCam);
+        const ndcX = xCam / (effDist * tanHalfHFov);
+        const ndcY = yCam / (effDist * tanHalfVFov);
+
+        minProjX = Math.min(minProjX, ndcX);
+        maxProjX = Math.max(maxProjX, ndcX);
+        minProjY = Math.min(minProjY, ndcY);
+        maxProjY = Math.max(maxProjY, ndcY);
 
         const dX = (Math.abs(xCam) * marginScale) / tanHalfHFov + zCam;
         const dY = (Math.abs(yCam) * marginScale) / tanHalfVFov + zCam;
         reqDist = Math.max(reqDist, dX, dY);
       }
 
-      shiftRight += (minProjX + maxProjX) * 0.5;
-      shiftUp    += (minProjY + maxProjY) * 0.5;
+      // Shift lookAt so min & max projected screen bounds are perfectly centered (equal space above/below & left/right)
+      shiftRight += ((minProjX + maxProjX) * 0.5) * distance * tanHalfHFov * 0.85;
+      shiftUp    += ((minProjY + maxProjY) * 0.5) * distance * tanHalfVFov * 0.85;
       distance = reqDist;
     }
 
