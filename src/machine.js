@@ -30,16 +30,12 @@ function createLogoPlateTexture() {
   return tex;
 }
 
-/**
- * Creates a faint stamped aluminum model & serial number plate texture mounted below the typebasket
- */
 function createSerialPlateTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 96;
   const ctx = canvas.getContext('2d');
 
-  // Aged dark stamped aluminum background
   ctx.fillStyle = '#2b2d2e';
   ctx.fillRect(0, 0, 512, 96);
 
@@ -47,7 +43,6 @@ function createSerialPlateTexture() {
   ctx.lineWidth = 3;
   ctx.strokeRect(6, 6, 500, 84);
 
-  // Two small corner rivet circles
   ctx.fillStyle = '#78756e';
   [22, 490].forEach((rx) => {
     ctx.beginPath();
@@ -71,9 +66,6 @@ function createSerialPlateTexture() {
   return tex;
 }
 
-/**
- * Generates a realistic woven cotton bichrome ribbon texture
- */
 function createWovenRibbonTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -116,9 +108,6 @@ function createWovenRibbonTexture() {
   return tex;
 }
 
-/**
- * Helper to create a small slotted screw head mesh (oxidized satin nickel with a dark recessed slot)
- */
 function createSlottedScrew(chromeMat, slotMat, radius = 0.065) {
   const screwGroup = new THREE.Group();
   const head = new THREE.Mesh(
@@ -233,7 +222,6 @@ export function buildMachineChassis(scene) {
   rightWall.receiveShadow = true;
   machineRoot.add(rightWall);
 
-  // Inner Deck Guard Strips along the inside of both cheeks
   const cheekLinerGeo = new THREE.BoxGeometry(0.18, 0.34, 3.15);
   const leftCheekLiner = new THREE.Mesh(cheekLinerGeo, enamelBodyMat);
   leftCheekLiner.position.set(-4.64, 1.24, 3.05);
@@ -296,7 +284,6 @@ export function buildMachineChassis(scene) {
   hoodFrontBridge.receiveShadow = true;
   machineRoot.add(hoodFrontBridge);
 
-  // Recessed dark gap lines between top cover and outer shell
   const seamSideGeo = new THREE.BoxGeometry(0.038, 0.39, 2.68);
   const seamOuterLeft = new THREE.Mesh(seamSideGeo, seamGapMat);
   seamOuterLeft.position.set(-4.87, 2.125, 0.55);
@@ -318,7 +305,7 @@ export function buildMachineChassis(scene) {
   seamRearLine.position.set(0, 2.40, -0.78);
   machineRoot.add(seamRearLine);
 
-  // 4B. Small Visible Slotted Screw Heads on the Top Cover and Side Cheeks
+  // Slotted Screw Heads
   const topScrewCoords = [
     [-4.55, 2.08, 1.62, 0.20, 0.4],
     [ 4.55, 2.08, 1.62, 0.20, 1.1],
@@ -334,7 +321,6 @@ export function buildMachineChassis(scene) {
     machineRoot.add(screw);
   });
 
-  // Side cheek screws & inner cheek liner screws
   [
     [-4.63, 1.44, 2.18, 0.25, 0.5],
     [ 4.63, 1.44, 2.18, 0.25, 1.9],
@@ -347,7 +333,7 @@ export function buildMachineChassis(scene) {
     machineRoot.add(screw);
   });
 
-  // Matte Olivetti Lettera 32 Logo Plate on the raised top cover bridge
+  // Matte Olivetti Lettera 32 Logo Plate
   const logoMat = new THREE.MeshStandardMaterial({
     map: createLogoPlateTexture(),
     roughness: 0.72,
@@ -359,7 +345,7 @@ export function buildMachineChassis(scene) {
   logoPlate.rotation.x = -Math.PI * 0.5 + 0.22;
   machineRoot.add(logoPlate);
 
-  // Faint Stamped Model & Serial Number Plate mounted below the basket
+  // Stamped Model & Serial Number Plate
   const serialMat = new THREE.MeshStandardMaterial({
     map: createSerialPlateTexture(),
     roughness: 0.68,
@@ -430,6 +416,40 @@ export function buildMachineChassis(scene) {
   populateCoveredSpool(spoolGroupLeft);
   populateCoveredSpool(spoolGroupRight);
 
+  // 6B. Physical Ribbon Colour Switch Lever on the Right Top Deck (Black / Red / White Stencil)
+  const ribbonSelectorBase = new THREE.Group();
+  ribbonSelectorBase.position.set(2.92, 2.02, 1.50);
+  ribbonSelectorBase.rotation.x = 0.22;
+  machineRoot.add(ribbonSelectorBase);
+
+  const selectorPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.04, 0.48), chromeMat);
+  ribbonSelectorBase.add(selectorPlate);
+
+  // Color indicator dots next to the lever slot (Blue/Black, White/Stencil, Red)
+  const dotGeo = new THREE.CylinderGeometry(0.032, 0.032, 0.05, 12);
+  const dotBlack = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0x1a242e }));
+  dotBlack.position.set(0.10, 0.01, -0.14);
+  ribbonSelectorBase.add(dotBlack);
+
+  const dotStencil = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0xe8e2d5 }));
+  dotStencil.position.set(0.10, 0.01, 0.0);
+  ribbonSelectorBase.add(dotStencil);
+
+  const dotRed = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0xc83228 }));
+  dotRed.position.set(0.10, 0.01, 0.14);
+  ribbonSelectorBase.add(dotRed);
+
+  const ribbonSelectorLever = new THREE.Group();
+  ribbonSelectorBase.add(ribbonSelectorLever);
+
+  const selArm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.36), chromeMat);
+  selArm.position.set(-0.02, 0.05, 0.08);
+  ribbonSelectorLever.add(selArm);
+
+  const selKnob = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.14), darkSteelMat);
+  selKnob.position.set(-0.02, 0.08, 0.24);
+  ribbonSelectorLever.add(selKnob);
+
   // 7. Ribbon Vibrator Guide & Woven Cotton Bichrome Ribbon Strip Across the Typing Point
   const vibratorGroup = new THREE.Group();
   vibratorGroup.position.set(0, 2.66, -0.53);
@@ -480,6 +500,28 @@ export function buildMachineChassis(scene) {
   const ribbonMesh = new THREE.Mesh(ribbonGeo, wovenRibbonMat);
   vibratorGroup.add(ribbonMesh);
 
+  let targetSelRotY = -0.22; // 'black' = -0.22, 'red' = +0.24, 'stencil' = 0.0
+
+  function setRibbonModeVisual(mode) {
+    if (mode === 'red') {
+      targetSelRotY = 0.24;
+      wovenRibbonMat.color.setHex(0xffb8b0);
+      ribbonMesh.position.y = 0.05;
+    } else if (mode === 'stencil') {
+      targetSelRotY = 0.0;
+      wovenRibbonMat.color.setHex(0x9a9895);
+      ribbonMesh.position.y = -0.06;
+    } else {
+      targetSelRotY = -0.22;
+      wovenRibbonMat.color.setHex(0xffffff);
+      ribbonMesh.position.y = 0.0;
+    }
+  }
+
+  function updateMachineLevers(dt) {
+    ribbonSelectorLever.rotation.y += (targetSelRotY - ribbonSelectorLever.rotation.y) * Math.min(1.0, dt * 16.0);
+  }
+
   return {
     machineRoot,
     materials: {
@@ -491,6 +533,11 @@ export function buildMachineChassis(scene) {
     },
     spoolGroupLeft,
     spoolGroupRight,
-    vibratorGroup
+    vibratorGroup,
+    ribbonSelectorBase,
+    ribbonSelectorLever,
+    wovenRibbonMat,
+    setRibbonModeVisual,
+    updateMachineLevers
   };
 }
