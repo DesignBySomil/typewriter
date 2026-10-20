@@ -32,9 +32,22 @@
       <button id="btn-sheet" class="hud-btn" title="Feed Fresh Archival Sheet">NEW SHEET</button>
       <button id="btn-kb" class="hud-btn" title="Focus Virtual Keyboard for Mobile">KEYBOARD</button>
       <button id="btn-return" class="hud-btn" title="Carriage Return (Enter)">CR / LF ↵</button>
+      <button id="btn-print" class="hud-btn" title="Print or save the typed page exactly as it looks">PRINT / SAVE</button>
       <button id="btn-mute" class="hud-btn active" title="Toggle Synthesized Mechanical Audio">AUDIO: ON</button>
     </div>
   </header>
+
+  <div id="mobile-bar">
+    <button id="btn-kb-m" class="hud-btn">KEYBOARD</button>
+    <button id="btn-print-m" class="hud-btn">PRINT / SAVE</button>
+  </div>
+
+  <div id="print-menu">
+    <div class="pm-title">PRINT / SAVE PAGE</div>
+    <button id="pm-png" class="hud-btn">SAVE PNG</button>
+    <button id="pm-pdf" class="hud-btn">SAVE PDF</button>
+    <button id="pm-print" class="hud-btn">PRINT</button>
+  </div>
 
   <!-- Full-screen SVG Telemetry HUD (Corner-anchored, never covers keys) -->
   <svg id="hud-overlay" xmlns="http://www.w3.org/2000/svg">
