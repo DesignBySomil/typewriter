@@ -6,10 +6,11 @@ import { buildKeysSystem } from './keys.js';
 import { buildTypebarsSystem } from './typebars.js';
 import { buildCarriageSystem } from './carriage.js';
 import { createPaperSystem } from './paper.js';
-import { createExportSystem } from './export.js';
 import { TypewriterAudio } from './audio.js';
 import { createHudSystem } from './hud.js';
 import { createInputSystem } from './input.js';
+import { createControlsSystem } from './controls.js';
+import { createExportSystem } from './export.js';
 
 const container = document.getElementById('webgl-container');
 const sound = new TypewriterAudio();
@@ -18,7 +19,7 @@ const sound = new TypewriterAudio();
 const sceneSys = createSceneSystem(container);
 const { renderer, scene, camera, bgScene, bgCamera, basketLight } = sceneSys;
 
-// 2. Build 1963 Olivetti Lettera 32 Chassis, Screw Heads, Serial Plate, Covered Spools & Vibrator
+// 2. Build 1963 Olivetti Lettera 32 Chassis, Screw Heads, Serial Plate, Covered Spools, Ribbon Switch & Vibrator
 const chassis = buildMachineChassis(scene);
 
 // 3. Build 44 Staggered Keys, Wide Shift Keys, Dusty Scuffed Spacebar & Linkage Rods
@@ -31,7 +32,7 @@ const typebarsSys = buildTypebarsSystem(
   keysSys.printableControllers
 );
 
-// 5. Build Carriage, Matte Rubber Platen, Indexed Ribbed Knobs & Return Lever
+// 5. Build Carriage, Matte Rubber Platen, Indexed Ribbed Knobs, Margin Stops, Paper Release & Return Lever
 const carriageSys = buildCarriageSystem(
   chassis.machineRoot,
   chassis.materials,
@@ -41,32 +42,37 @@ const carriageSys = buildCarriageSystem(
 // 6. Build 80gsm Bond Paper Sheet & Letterpress Deboss Shader
 const paperSys = createPaperSystem(carriageSys.carriageGroup);
 
-// 7. Build SVG Telemetry HUD
+// 7. Build SVG Telemetry HUD & Print/Save Export System
 const hudSys = createHudSystem(camera, carriageSys.carriageGroup);
+const exportSys = createExportSystem(paperSys);
 
-/**
- * Returns active column bounds:
- * - Desktop / Landscape: 46 columns (0..46)
- * - Portrait Phones: 36 columns centered on the sheet (cols 5..41) so both platen knobs stay inside the ~4% margin frame
- */
+// Expose export system on window.typewriter for programmatic inspection
+window.typewriter = {
+  export: exportSys
+};
+
+// User-adjustable margin stop columns (draggable via the 3D margin stops on the scale rail)
+const userMargins = {
+  leftCol: 0,
+  rightCol: CONFIG.maxCols
+};
+
 function getActiveColumnBounds() {
   const isPortrait = (window.innerWidth / Math.max(1, window.innerHeight)) < 0.92;
-  if (isPortrait) {
-    const pad = Math.floor((CONFIG.maxCols - CONFIG.portraitCols) * 0.5); // 5
-    return {
-      minCol: pad,
-      maxCol: pad + CONFIG.portraitCols,
-      totalCols: CONFIG.portraitCols
-    };
-  }
+  const defaultMin = isPortrait ? Math.floor((CONFIG.maxCols - CONFIG.portraitCols) * 0.5) : 0;
+  const defaultMax = isPortrait ? defaultMin + CONFIG.portraitCols : CONFIG.maxCols;
+
+  const minCol = Math.max(defaultMin, userMargins.leftCol);
+  const maxCol = Math.min(defaultMax, userMargins.rightCol);
   return {
-    minCol: 0,
-    maxCol: CONFIG.maxCols,
-    totalCols: CONFIG.maxCols
+    minCol,
+    maxCol,
+    totalCols: Math.max(1, maxCol - minCol)
   };
 }
 
 const initialBounds = getActiveColumnBounds();
+carriageSys.setMarginStopPositions(userMargins.leftCol, userMargins.rightCol);
 
 // 8. Live Telemetry & Mechanical State
 const telemetry = {
@@ -76,8 +82,10 @@ const telemetry = {
   strikes: 0,
   lastKeyLabel: '[NONE]',
   shiftDown: false,
+  shiftLockedNext: false, // Tapping 3D Shift key toggles shift lock for next char
+  paperReleased: false,
   marginLocked: false,
-  ribbonColor: 'black', // 'black' | 'red'
+  ribbonColor: 'black',   // 'black' | 'red' | 'stencil'
   ribbonInk: 100.0,
   spoolAngle: 0.0,
   spoolDirection: 1,
@@ -98,6 +106,15 @@ function dismissIntroPrompt() {
   if (el) el.classList.add('hidden');
 }
 
+function updateShiftBasketVisuals() {
+  const active = telemetry.shiftDown || telemetry.shiftLockedNext;
+  typebarsSys.setBasketShift(active);
+  const sl = keysSys.keyMap.get('ShiftLeft');
+  const sr = keysSys.keyMap.get('ShiftRight');
+  if (sl) sl.targetPress = active ? 0.24 : 0;
+  if (sr) sr.targetPress = active ? 0.24 : 0;
+}
+
 function handlePrintableKey(ctrl, explicitChar = null) {
   sound.init();
   dismissIntroPrompt();
@@ -105,13 +122,18 @@ function handlePrintableKey(ctrl, explicitChar = null) {
   const bounds = getActiveColumnBounds();
   if (telemetry.col < bounds.minCol) telemetry.col = bounds.minCol;
 
-  // Deep 3-4px equivalent key sink + return spring overshoot + neighbor ripple
   keysSys.depressKey(ctrl, 0.34);
   sound.playKeyClack(0.95 + Math.random() * 0.1);
 
+  const isUpper = telemetry.shiftDown || telemetry.shiftLockedNext;
   const charToPrint = explicitChar
-    ? explicitChar
-    : (telemetry.shiftDown ? ctrl.upper : ctrl.lower);
+    ? (telemetry.shiftLockedNext ? explicitChar.toUpperCase() : explicitChar)
+    : (isUpper ? ctrl.upper : ctrl.lower);
+
+  if (telemetry.shiftLockedNext) {
+    telemetry.shiftLockedNext = false;
+    updateShiftBasketVisuals();
+  }
 
   telemetry.lastKeyLabel = `'${charToPrint}'`;
 
@@ -133,7 +155,9 @@ function handlePrintableKey(ctrl, explicitChar = null) {
   const targetLineId = telemetry.totalLinesTyped;
   const targetRibbon = telemetry.ribbonColor;
 
-  paperSys.stampCharacter(charToPrint, targetCol, 0, targetRibbon, targetLineId);
+  if (paperSys.isSheetPresent()) {
+    paperSys.stampCharacter(charToPrint, targetCol, 0, targetRibbon, targetLineId);
+  }
 
   telemetry.strikes++;
   telemetry.ribbonInk = Math.max(10.0, 100.0 - telemetry.strikes * 0.035);
@@ -155,8 +179,10 @@ function handlePrintableKey(ctrl, explicitChar = null) {
 
   typebarsSys.triggerBarSwing(ctrl, false, () => {
     carriageSys.triggerPlatenRecoil();
-    typebarsSys.triggerInkDustPuff(targetRibbon);
-    telemetry.vibratorLiftY = targetRibbon === 'red' ? 0.22 : 0.13;
+    if (targetRibbon !== 'stencil') {
+      typebarsSys.triggerInkDustPuff(targetRibbon);
+    }
+    telemetry.vibratorLiftY = targetRibbon === 'red' ? 0.22 : (targetRibbon === 'stencil' ? 0.0 : 0.13);
     telemetry.cameraShake = 0.012;
     telemetry.cameraNudgeY = -0.020;
     sound.playStrikeImpact();
@@ -224,11 +250,17 @@ function handleCarriageReturn() {
 
   telemetry.col = bounds.minCol;
   telemetry.marginLocked = false;
-  telemetry.pageLine++;
   telemetry.totalLinesTyped++;
 
   carriageSys.triggerCarriageReturnMotion(bounds.minCol);
 
+  if (!paperSys.isSheetPresent()) {
+    paperSys.triggerNewSheetInsert();
+    telemetry.pageLine = 0;
+    return;
+  }
+
+  telemetry.pageLine++;
   if (telemetry.pageLine >= CONFIG.maxLinesPerPage) {
     telemetry.pageLine = 0;
     paperSys.triggerNewSheetInsert();
@@ -239,15 +271,14 @@ function handleCarriageReturn() {
 }
 
 function handleShiftChange(mode) {
-  const nextState = mode === 'toggle' ? !telemetry.shiftDown : Boolean(mode);
+  if (mode === 'toggle') {
+    handleShiftToggleLock();
+    return;
+  }
+  const nextState = Boolean(mode);
   if (telemetry.shiftDown === nextState) return;
   telemetry.shiftDown = nextState;
-
-  typebarsSys.setBasketShift(nextState);
-  const sl = keysSys.keyMap.get('ShiftLeft');
-  const sr = keysSys.keyMap.get('ShiftRight');
-  if (sl) sl.targetPress = nextState ? 0.24 : 0;
-  if (sr) sr.targetPress = nextState ? 0.24 : 0;
+  updateShiftBasketVisuals();
 
   if (nextState) {
     sound.init();
@@ -255,19 +286,103 @@ function handleShiftChange(mode) {
   }
 }
 
-function handleToggleRibbonColor() {
+function handleShiftToggleLock() {
   sound.init();
+  dismissIntroPrompt();
+  telemetry.shiftLockedNext = !telemetry.shiftLockedNext;
+  telemetry.lastKeyLabel = telemetry.shiftLockedNext ? 'SHIFT LOCK' : 'SHIFT UNLK';
+  sound.playKeyClack(0.78);
+  updateShiftBasketVisuals();
+}
+
+function handleCycleRibbonMode() {
+  sound.init();
+  dismissIntroPrompt();
   const tc = keysSys.keyMap.get('Tab');
-  keysSys.depressKey(tc, 0.28);
+  keysSys.depressKey(tc, 0.24);
   sound.playKeyClack(1.12);
 
-  telemetry.ribbonColor = telemetry.ribbonColor === 'black' ? 'red' : 'black';
-  telemetry.lastKeyLabel = telemetry.ribbonColor === 'red' ? 'RIB: RED' : 'RIB: BLK';
+  const order = ['black', 'red', 'stencil'];
+  const nextIdx = (order.indexOf(telemetry.ribbonColor) + 1) % order.length;
+  telemetry.ribbonColor = order[nextIdx];
+
+  chassis.setRibbonModeVisual(telemetry.ribbonColor);
+
+  const labelMap = { black: 'RIB: BLK', red: 'RIB: RED', stencil: 'RIB: STN' };
+  const btnMap = { black: 'RIBBON: BLK', red: 'RIBBON: RED', stencil: 'RIBBON: STN' };
+  telemetry.lastKeyLabel = labelMap[telemetry.ribbonColor];
 
   const btnRibbon = document.getElementById('btn-ribbon');
   if (btnRibbon) {
-    btnRibbon.textContent = telemetry.ribbonColor === 'red' ? 'RIBBON: RED' : 'RIBBON: BLK';
+    btnRibbon.textContent = btnMap[telemetry.ribbonColor];
     btnRibbon.classList.toggle('warn', telemetry.ribbonColor === 'red');
+    btnRibbon.classList.toggle('active', telemetry.ribbonColor === 'stencil');
+  }
+}
+
+function handlePlatenLineFeed(deltaLines, snapToLine = true) {
+  sound.init();
+  dismissIntroPrompt();
+  carriageSys.rotatePlatenByLines(deltaLines);
+  if (snapToLine) {
+    sound.playCarriageAdvanceClick(0.0);
+  }
+  if (paperSys.isSheetPresent()) {
+    const newLine = paperSys.scrollByLines(deltaLines, snapToLine);
+    telemetry.pageLine = Math.max(0, Math.min(CONFIG.maxLinesPerPage - 1, newLine));
+  }
+  telemetry.lastKeyLabel = deltaLines > 0 ? 'KNOB UP' : 'KNOB DN';
+}
+
+function handleUpdateMargins(side, targetCol) {
+  sound.init();
+  if (side === 'left') {
+    userMargins.leftCol = THREE.MathUtils.clamp(targetCol, 0, userMargins.rightCol - 10);
+  } else {
+    userMargins.rightCol = THREE.MathUtils.clamp(targetCol, userMargins.leftCol + 10, CONFIG.maxCols);
+  }
+  carriageSys.setMarginStopPositions(userMargins.leftCol, userMargins.rightCol);
+
+  const bounds = getActiveColumnBounds();
+  if (telemetry.col < bounds.minCol) {
+    telemetry.col = bounds.minCol;
+    carriageSys.advanceToCol(telemetry.col, 0.15);
+  } else if (telemetry.col > bounds.maxCol) {
+    telemetry.col = bounds.maxCol;
+    telemetry.marginLocked = true;
+    carriageSys.advanceToCol(telemetry.col, -0.15);
+  } else {
+    telemetry.marginLocked = false;
+  }
+  telemetry.lastKeyLabel = `MRG ${userMargins.leftCol + 1}-${userMargins.rightCol}`;
+}
+
+function handleTogglePaperRelease() {
+  sound.init();
+  dismissIntroPrompt();
+  telemetry.paperReleased = !telemetry.paperReleased;
+  carriageSys.setPaperReleased(telemetry.paperReleased);
+  sound.playKeyClack(1.18);
+  telemetry.lastKeyLabel = telemetry.paperReleased ? 'PAPER FREE' : 'PAPER LOCK';
+}
+
+function handleRemoveOrInsertPaper(mode = 'toggle') {
+  sound.init();
+  dismissIntroPrompt();
+  const bounds = getActiveColumnBounds();
+
+  if (mode === 'insert' || !paperSys.isSheetPresent()) {
+    sound.playCarriageReturn(0.5);
+    telemetry.col = bounds.minCol;
+    telemetry.pageLine = 0;
+    telemetry.marginLocked = false;
+    carriageSys.triggerCarriageReturnMotion(bounds.minCol);
+    paperSys.triggerNewSheetInsert();
+    telemetry.lastKeyLabel = 'SHEET IN';
+  } else {
+    sound.playCarriageReturn(0.35);
+    paperSys.triggerPaperEject();
+    telemetry.lastKeyLabel = 'SHEET OUT';
   }
 }
 
@@ -275,52 +390,87 @@ function handleToggleHudVisibility() {
   document.body.classList.toggle('hud-hidden');
 }
 
-// 9. Wire Input System & Top Bar Buttons
+// 9. Wire PRINT / SAVE Panel & Controls
+const printSavePanel = document.getElementById('print-save-panel');
+function isExportPanelOpen() {
+  return printSavePanel && !printSavePanel.classList.contains('hidden');
+}
+function closeExportPanel() {
+  if (printSavePanel) printSavePanel.classList.add('hidden');
+}
+function toggleExportPanel() {
+  if (printSavePanel) printSavePanel.classList.toggle('hidden');
+}
+
+document.getElementById('btn-print-save')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleExportPanel();
+});
+document.getElementById('btn-print-save-m')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleExportPanel();
+});
+document.getElementById('btn-export-close')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeExportPanel();
+});
+document.getElementById('btn-export-png')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  exportSys.downloadPNG();
+  closeExportPanel();
+});
+document.getElementById('btn-export-pdf')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  exportSys.downloadPDF();
+  closeExportPanel();
+});
+document.getElementById('btn-export-print')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  exportSys.printPage();
+  closeExportPanel();
+});
+
+// 10. Wire Keyboard Input System & 3D Interactive Controls System
 const inputSys = createInputSystem({
   rendererDom: renderer.domElement,
-  camera,
   keyMap: keysSys.keyMap,
   charToKeyMap: keysSys.charToKeyMap,
-  clickableMeshes: keysSys.clickableMeshes,
   onPrintableKey: handlePrintableKey,
   onSpace: handleSpace,
   onBackspace: handleBackspace,
   onCarriageReturn: handleCarriageReturn,
   onShiftChange: handleShiftChange,
-  onToggleRibbonColor: handleToggleRibbonColor,
-  onToggleHudVisibility: handleToggleHudVisibility
+  onToggleRibbonColor: handleCycleRibbonMode,
+  onToggleHudVisibility: handleToggleHudVisibility,
+  onPrintShortcut: () => exportSys.printPage(),
+  isExportPanelOpen,
+  onCloseExportPanel: closeExportPanel
 });
 
-const exportSys = createExportSystem(paperSys.paperCanvas);
-window.typewriter = { export: exportSys };
-const printMenu = document.getElementById('print-menu');
-const btnPrint = document.getElementById('btn-print');
-[btnPrint, document.getElementById('btn-print-m')].forEach((btn) => btn?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  printMenu?.classList.toggle('open');
-  btn.blur();
-}));
-
-document.getElementById('pm-png')?.addEventListener('click', () => { exportSys.savePNG(); printMenu.classList.remove('open'); });
-document.getElementById('pm-pdf')?.addEventListener('click', () => { exportSys.savePDF(); printMenu.classList.remove('open'); });
-document.getElementById('pm-print')?.addEventListener('click', () => { exportSys.printPage(); printMenu.classList.remove('open'); });
-window.addEventListener('pointerdown', (e) => {
-  if (printMenu && !printMenu.contains(e.target) && e.target.id !== 'btn-print' && e.target.id !== 'btn-print-m') printMenu.classList.remove('open');
+createControlsSystem({
+  rendererDom: renderer.domElement,
+  camera,
+  chassis,
+  keysSys,
+  carriageSys,
+  paperSys,
+  onPrintableKey: handlePrintableKey,
+  onSpace: handleSpace,
+  onBackspace: handleBackspace,
+  onCarriageReturn: handleCarriageReturn,
+  onShiftToggleLock: handleShiftToggleLock,
+  onCycleRibbonMode: handleCycleRibbonMode,
+  onPlatenLineFeed: handlePlatenLineFeed,
+  onUpdateMargins: handleUpdateMargins,
+  onTogglePaperRelease: handleTogglePaperRelease,
+  onRemoveOrInsertPaper: handleRemoveOrInsertPaper,
+  onTouchCanvasFocus: () => inputSys.focusMobileKeyboard()
 });
-document.querySelectorAll('#print-menu button, .hud-btn').forEach((b) => b.addEventListener('click', () => b.blur()));
 
 document.getElementById('btn-return')?.addEventListener('click', () => handleCarriageReturn());
-document.getElementById('btn-ribbon')?.addEventListener('click', () => handleToggleRibbonColor());
-document.getElementById('btn-sheet')?.addEventListener('click', () => {
-  sound.init();
-  const bounds = getActiveColumnBounds();
-  sound.playCarriageReturn(0.8);
-  telemetry.col = bounds.minCol;
-  telemetry.pageLine = 0;
-  telemetry.marginLocked = false;
-  carriageSys.triggerCarriageReturnMotion(bounds.minCol);
-  paperSys.triggerNewSheetInsert();
-});
+document.getElementById('btn-ribbon')?.addEventListener('click', () => handleCycleRibbonMode());
+document.getElementById('btn-sheet')?.addEventListener('click', () => handleRemoveOrInsertPaper('toggle'));
+document.getElementById('btn-sheet-m')?.addEventListener('click', () => handleRemoveOrInsertPaper('toggle'));
 
 const btnMute = document.getElementById('btn-mute');
 btnMute?.addEventListener('click', () => {
@@ -344,7 +494,7 @@ window.addEventListener('resize', () => {
   }
 });
 
-// 10. Main 60fps Animation & Render Loop
+// 11. Main 60fps Animation & Render Loop
 const clock = new THREE.Clock();
 let elapsedTotal = 0;
 const smoothPointer = new THREE.Vector2(0, 0);
@@ -367,6 +517,7 @@ function animate() {
   keysSys.updateKeys(dt);
   typebarsSys.updateTypebars(dt);
   carriageSys.updateCarriage(dt);
+  chassis.updateMachineLevers(dt);
   paperSys.updatePaper(dt, elapsedTotal);
 
   telemetry.vibratorLiftY *= Math.exp(-dt * 24.0);
