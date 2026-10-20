@@ -7,10 +7,10 @@ function createImpactGlowTexture() {
   canvas.height = 128;
   const ctx = canvas.getContext('2d');
   const grad = ctx.createRadialGradient(64, 64, 2, 64, 64, 62);
-  grad.addColorStop(0.0, 'rgba(255, 244, 214, 0.90)');
-  grad.addColorStop(0.32, 'rgba(238, 185, 108, 0.45)');
-  grad.addColorStop(0.70, 'rgba(210, 130, 60, 0.12)');
-  grad.addColorStop(1.0, 'rgba(210, 130, 60, 0.0)');
+  grad.addColorStop(0.0, 'rgba(255, 240, 205, 0.75)');
+  grad.addColorStop(0.35, 'rgba(225, 175, 100, 0.32)');
+  grad.addColorStop(0.70, 'rgba(190, 120, 55, 0.08)');
+  grad.addColorStop(1.0, 'rgba(190, 120, 55, 0.0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 128, 128);
   return new THREE.CanvasTexture(canvas);
@@ -18,9 +18,8 @@ function createImpactGlowTexture() {
 
 /**
  * Builds the 44 Typebars in the Slotted Segment Basket:
- * - Dull brushed steel arms (roughness 0.44, NO neon rim glow)
- * - Darker oxidised steel slugs (roughness 0.58)
- * - Subtle impact flash at the printing point + 28-particle ink-dust puff
+ * - Oxidized dull steel arms (roughness 0.56, metalness 0.78)
+ * - Matte dark oxidized slugs with an embossed letter face pad that accumulates a faint ink mark when struck!
  */
 export function buildTypebarsSystem(machineRoot, materials, printableControllers) {
   const { chromeMat } = materials;
@@ -29,36 +28,42 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
   typebasketGroup.position.set(0, 0, 0);
   machineRoot.add(typebasketGroup);
 
-  // Slotted Satin-Nickel Segment Arc
-  const segmentArcGeo = new THREE.TorusGeometry(2.05, 0.15, 12, 48, Math.PI * 0.78);
+  const segmentArcGeo = new THREE.TorusGeometry(2.02, 0.15, 12, 48, Math.PI * 0.78);
   const segmentMesh = new THREE.Mesh(segmentArcGeo, chromeMat);
-  segmentMesh.position.set(0, 1.38, -0.58);
+  segmentMesh.position.set(0, 1.36, -0.58);
   segmentMesh.rotation.x = Math.PI * 0.46;
   segmentMesh.rotation.z = Math.PI * 0.11;
   typebasketGroup.add(segmentMesh);
 
-  // Muted Felt Rest Pad Arc
-  const restPadGeo = new THREE.TorusGeometry(2.62, 0.08, 10, 40, Math.PI * 0.76);
-  const restPadMat = new THREE.MeshStandardMaterial({ color: 0x26382c, roughness: 0.92 });
+  const restPadGeo = new THREE.TorusGeometry(2.58, 0.08, 10, 40, Math.PI * 0.76);
+  const restPadMat = new THREE.MeshStandardMaterial({
+    color: 0x223026,
+    roughness: 0.95,
+    metalness: 0.0,
+    envMapIntensity: 0.05
+  });
   const restPadMesh = new THREE.Mesh(restPadGeo, restPadMat);
-  restPadMesh.position.set(0, 1.42, -0.55);
+  restPadMesh.position.set(0, 1.40, -0.55);
   restPadMesh.rotation.x = Math.PI * 0.47;
   restPadMesh.rotation.z = Math.PI * 0.12;
   typebasketGroup.add(restPadMesh);
 
   const R = CONFIG.typebarRadius;
-  const armGeo = new THREE.BoxGeometry(0.046, R + 0.16, 0.095);
+  const armGeo = new THREE.BoxGeometry(0.045, R + 0.16, 0.092);
   armGeo.translate(0, (R + 0.16) * 0.5, 0.02);
 
-  const slugGeo = new THREE.BoxGeometry(0.115, 0.28, 0.16);
+  const slugGeo = new THREE.BoxGeometry(0.112, 0.27, 0.155);
   slugGeo.translate(0, R + 0.12, -0.02);
 
-  // Shared dull steel material for typebar arms (zero artificial neon emissive)
+  // Small raised letter-face pad on the striking side of the slug that picks up ribbon ink
+  const inkPadGeo = new THREE.BoxGeometry(0.085, 0.20, 0.025);
+  inkPadGeo.translate(0, R + 0.12, -0.095);
+
   const dullSteelArmMat = new THREE.MeshStandardMaterial({
-    color: 0xaeb2b5,
-    roughness: 0.44,
-    metalness: 0.76,
-    envMapIntensity: 0.55
+    color: 0x929699,
+    roughness: 0.56,
+    metalness: 0.78,
+    envMapIntensity: 0.22
   });
 
   const glowTex = createImpactGlowTexture();
@@ -66,8 +71,8 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
   const bars = [];
 
   printableControllers.forEach((ctrl, idx) => {
-    const normIdx = (idx / (totalBars - 1)) * 2 - 1; // -1 .. +1
-    const fanAngle = normIdx * 1.10;
+    const normIdx = (idx / (totalBars - 1)) * 2 - 1;
+    const fanAngle = normIdx * 1.08;
 
     const barHolder = new THREE.Group();
     barHolder.position.copy(CONFIG.strikePoint);
@@ -84,23 +89,31 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
     barArm.castShadow = true;
     pivotNode.add(barArm);
 
-    // Darker oxidised steel slug at the end of each bar
     const slugMat = new THREE.MeshStandardMaterial({
-      color: 0x45484b,
-      roughness: 0.58,
-      metalness: 0.68,
-      envMapIntensity: 0.45,
-      emissive: new THREE.Color(0xffb454),
+      color: 0x383b3d,
+      roughness: 0.76,
+      metalness: 0.0,
+      envMapIntensity: 0.12,
+      emissive: new THREE.Color(0xd99b4e),
       emissiveIntensity: 0.0
     });
     const barSlug = new THREE.Mesh(slugGeo, slugMat);
     barSlug.castShadow = true;
     pivotNode.add(barSlug);
 
-    // Subtle impact glint sprite at the slug tip
+    // Individual ink-mark pad on the slug face (starts dull steel, stains dark/red when struck)
+    const inkPadMat = new THREE.MeshStandardMaterial({
+      color: 0x4a4d50,
+      roughness: 0.88,
+      metalness: 0.0,
+      envMapIntensity: 0.06
+    });
+    const inkPadMesh = new THREE.Mesh(inkPadGeo, inkPadMat);
+    pivotNode.add(inkPadMesh);
+
     const flashSpriteMat = new THREE.SpriteMaterial({
       map: glowTex,
-      color: 0xffd28e,
+      color: 0xf2c882,
       transparent: true,
       opacity: 0.0,
       blending: THREE.AdditiveBlending,
@@ -108,7 +121,7 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
     });
     const flashSprite = new THREE.Sprite(flashSpriteMat);
     flashSprite.position.set(0, R + 0.18, 0.07);
-    flashSprite.scale.set(0.45, 0.45, 0.45);
+    flashSprite.scale.set(0.36, 0.36, 0.36);
     pivotNode.add(flashSprite);
 
     typebasketGroup.add(barHolder);
@@ -118,18 +131,20 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
       normIdx,
       pivotNode,
       slugMat,
+      inkPadMat,
       flashSpriteMat,
       restAngleX,
       phase: 'idle',
       timer: 0,
-      flashIntensity: 0
+      flashIntensity: 0,
+      inkStainCount: 0
     };
 
     ctrl.typebar = barState;
     bars.push(barState);
   });
 
-  // Ink-Dust Puff Particle System (28 micro-particles bursting off the ribbon/paper at impact)
+  // Ink-Dust Puff Particle System
   const dustCount = 28;
   const dustPositions = new Float32Array(dustCount * 3);
   const dustVelocities = Array.from({ length: dustCount }, () => new THREE.Vector3());
@@ -137,8 +152,8 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
   dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
 
   const dustMat = new THREE.PointsMaterial({
-    color: 0xd0bda0,
-    size: 0.048,
+    color: 0xc8b598,
+    size: 0.044,
     transparent: true,
     opacity: 0.0,
     blending: THREE.AdditiveBlending,
@@ -151,8 +166,8 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
 
   function triggerInkDustPuff(ribbonColor = 'black') {
     dustLife = 1.0;
-    dustMat.color.setHex(ribbonColor === 'red' ? 0xd9534f : 0xe8d5b7);
-    dustMat.opacity = 0.65;
+    dustMat.color.setHex(ribbonColor === 'red' ? 0xc94a42 : 0xdccaa8);
+    dustMat.opacity = 0.55;
 
     const posAttr = dustGeo.attributes.position;
     for (let i = 0; i < dustCount; i++) {
@@ -163,9 +178,9 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
         CONFIG.strikePoint.z + 0.06
       );
       dustVelocities[i].set(
-        (Math.random() - 0.5) * 1.2,
-        0.4 + Math.random() * 1.15,
-        0.3 + Math.random() * 0.9
+        (Math.random() - 0.5) * 1.15,
+        0.35 + Math.random() * 1.05,
+        0.25 + Math.random() * 0.85
       );
     }
     posAttr.needsUpdate = true;
@@ -173,12 +188,13 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
 
   let basketTargetY = 0;
 
-  function triggerBarSwing(ctrl, isJammed = false, onVisualImpact = null) {
+  function triggerBarSwing(ctrl, isJammed = false, onVisualImpact = null, ribbonColor = 'black') {
     if (!ctrl || !ctrl.typebar) return;
     const b = ctrl.typebar;
     b.timer = 0;
     b.onVisualImpact = onVisualImpact;
     b.didTriggerImpact = false;
+    b.pendingRibbonColor = ribbonColor;
     b.phase = isJammed ? 'jam' : 'anticipation';
   }
 
@@ -189,10 +205,9 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
   function updateTypebars(dt) {
     typebasketGroup.position.y += (basketTargetY - typebasketGroup.position.y) * Math.min(1.0, dt * 18.0);
 
-    // Update Ink-Dust Puff Particles
     if (dustLife > 0.001) {
       dustLife = Math.max(0.0, dustLife - dt * 4.2);
-      dustMat.opacity = dustLife * 0.65;
+      dustMat.opacity = dustLife * 0.55;
       const posAttr = dustGeo.attributes.position;
       for (let i = 0; i < dustCount; i++) {
         posAttr.setXYZ(
@@ -212,11 +227,10 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
     for (let i = 0; i < bars.length; i++) {
       const b = bars[i];
 
-      // Subtle slug impact flash decay
       if (b.flashIntensity > 0.001) {
         b.flashIntensity *= Math.exp(-dt * 12.5);
-        b.slugMat.emissiveIntensity = b.flashIntensity * 1.35;
-        b.flashSpriteMat.opacity = Math.min(0.65, b.flashIntensity * 0.65);
+        b.slugMat.emissiveIntensity = b.flashIntensity * 0.85;
+        b.flashSpriteMat.opacity = Math.min(0.48, b.flashIntensity * 0.48);
       } else if (b.slugMat.emissiveIntensity !== 0) {
         b.slugMat.emissiveIntensity = 0;
         b.flashSpriteMat.opacity = 0;
@@ -240,8 +254,20 @@ export function buildTypebarsSystem(machineRoot, materials, printableControllers
         if (p >= 1.0) {
           b.pivotNode.rotation.x = -0.015;
           b.flashIntensity = 1.0;
-          b.slugMat.emissiveIntensity = 1.35;
-          b.flashSpriteMat.opacity = 0.65;
+          b.slugMat.emissiveIntensity = 0.85;
+          b.flashSpriteMat.opacity = 0.48;
+
+          // Leave a faint persistent ink mark on the typebar slug face after striking the ribbon
+          b.inkStainCount++;
+          const stainBlend = Math.min(1.0, 0.45 + b.inkStainCount * 0.15);
+          if (b.pendingRibbonColor === 'red') {
+            b.inkPadMat.color.lerp(new THREE.Color(0x581814), stainBlend);
+            b.slugMat.color.lerp(new THREE.Color(0x2e2221), 0.35);
+          } else {
+            b.inkPadMat.color.lerp(new THREE.Color(0x111113), stainBlend);
+            b.slugMat.color.lerp(new THREE.Color(0x202224), 0.35);
+          }
+
           if (!b.didTriggerImpact && b.onVisualImpact) {
             b.didTriggerImpact = true;
             b.onVisualImpact();
