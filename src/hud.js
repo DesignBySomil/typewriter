@@ -38,7 +38,7 @@ export function createHudSystem(camera, carriageGroup) {
   function layoutHud() {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const pad = w < 820 ? 8 : 14;
+    const pad = w < 820 ? 8 : 12;
     const len = 12;
 
     hudCornersGroup.innerHTML = `
@@ -48,11 +48,11 @@ export function createHudSystem(camera, carriageGroup) {
       <path class="corner-tick" d="M ${w - pad - len} ${h - pad} L ${w - pad} ${h - pad} L ${w - pad} ${h - pad - len}" />
     `;
 
-    // Anchor HUD cards strictly into the 4 outer viewport corners so they never cover the 3D keys
-    cardCarriage.setAttribute('transform', `translate(16, 44)`);
-    cardPlaten.setAttribute('transform', `translate(${w - 168}, 44)`);
-    cardBasket.setAttribute('transform', `translate(16, ${h - 88})`);
-    cardRibbon.setAttribute('transform', `translate(${w - 168}, ${h - 70})`);
+    // Anchor HUD cards strictly into the 4 outer viewport corners
+    cardCarriage.setAttribute('transform', `translate(14, 42)`);
+    cardPlaten.setAttribute('transform', `translate(${w - 162}, 42)`);
+    cardBasket.setAttribute('transform', `translate(14, ${h - 84})`);
+    cardRibbon.setAttribute('transform', `translate(${w - 162}, ${h - 66})`);
   }
 
   const tempProjVec = new THREE.Vector3();
@@ -69,15 +69,16 @@ export function createHudSystem(camera, carriageGroup) {
     const ty = targetScreen.y;
     const ex = cardX + elbowXOffset;
     const ey = cardY;
-    polyEl.setAttribute('points', `${cardX},${cardY} ${ex},${ey} ${tx},${ty}`);
+    polyEl.setAttribute('points', `${cardX},${cardY} ${ex},${ey} ${tx.toFixed(1)},${ty.toFixed(1)}`);
     dotEl.setAttribute('cx', tx.toFixed(1));
     dotEl.setAttribute('cy', ty.toFixed(1));
   }
 
+  // Exact 3D anchor points on actual machine components
   const anchorCarriageW = new THREE.Vector3();
   const anchorPlatenW   = new THREE.Vector3();
-  const anchorBasketW   = new THREE.Vector3(0, 1.95, 0.25);
-  const anchorRibbonW   = new THREE.Vector3(3.35, 2.55, 0.45);
+  const anchorBasketW   = new THREE.Vector3(-1.35, 1.85, -0.25); // Slotted typebasket arc
+  const anchorRibbonW   = new THREE.Vector3(3.35, 2.62, 0.45);   // Right bichrome ribbon spool
 
   function triggerBellFlash() {
     if (!boxCarriage) return;
@@ -86,7 +87,7 @@ export function createHudSystem(camera, carriageGroup) {
   }
 
   function updateHud(telemetry) {
-    const mmPos = (telemetry.col * 2.54).toFixed(1);
+    const mmPos = (telemetry.col * 3.4).toFixed(1);
     const colStr = String(telemetry.col + 1).padStart(2, '0');
     hudValCarriage.textContent = `${mmPos} mm [${colStr}/${CONFIG.maxCols}]`;
 
@@ -111,7 +112,7 @@ export function createHudSystem(camera, carriageGroup) {
 
     const ribMode = telemetry.ribbonColor === 'red' ? 'RED' : 'BLK';
     hudValRibbon.textContent = `${ribMode} // ${telemetry.ribbonInk.toFixed(1)}%`;
-    hudValRibbon.style.fill = telemetry.ribbonColor === 'red' ? '#f25f4c' : '#fff6e8';
+    hudValRibbon.style.fill = telemetry.ribbonColor === 'red' ? '#f25f4c' : '#fff8ed';
     hudValSpool.textContent = `SPOOL: ${telemetry.spoolAngle.toFixed(2)} RAD`;
 
     // Compact mobile readout update
@@ -125,29 +126,31 @@ export function createHudSystem(camera, carriageGroup) {
 
     // Update live strike interval sparkline
     const pts = telemetry.strikeIntervals.map((val, idx) => {
-      const x = 8 + (idx / Math.max(1, telemetry.strikeIntervals.length - 1)) * 136;
+      const x = 8 + (idx / Math.max(1, telemetry.strikeIntervals.length - 1)) * 132;
       const norm = 1.0 - Math.min(1.0, (val - 30) / 420);
-      const y = 66 - norm * 16;
+      const y = 64 - norm * 15;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
     hudSparkline.setAttribute('points', pts);
 
-    // Project 3D anchors to 2D SVG leader lines
+    // Project 3D anchors to 2D SVG leader lines ending directly on the physical machine parts
     const w = window.innerWidth;
     const h = window.innerHeight;
     if (w >= 820 && h >= 560) {
-      anchorCarriageW.set(carriageGroup.position.x - 4.2, 3.65, -1.1);
-      anchorPlatenW.set(carriageGroup.position.x + 4.2, 3.75, -1.15);
+      // Left carriage return lever / end-plate
+      anchorCarriageW.set(carriageGroup.position.x - 5.45, 3.65, -0.95);
+      // Right rubber platen roller end-cap
+      anchorPlatenW.set(carriageGroup.position.x + 5.15, 3.45, -1.15);
 
       const sCarriage = projectWorldToScreen(anchorCarriageW);
       const sPlaten   = projectWorldToScreen(anchorPlatenW);
       const sBasket   = projectWorldToScreen(anchorBasketW);
       const sRibbon   = projectWorldToScreen(anchorRibbonW);
 
-      setLeaderLine(leaderCarriage, dotCarriage, 168, 70, sCarriage, 24);
-      setLeaderLine(leaderBasket, dotBasket, 168, h - 52, sBasket, 24);
-      setLeaderLine(leaderPlaten, dotPlaten, w - 168, 70, sPlaten, -24);
-      setLeaderLine(leaderRibbon, dotRibbon, w - 168, h - 44, sRibbon, -24);
+      setLeaderLine(leaderCarriage, dotCarriage, 162, 68, sCarriage, 22);
+      setLeaderLine(leaderBasket, dotBasket, 162, h - 50, sBasket, 22);
+      setLeaderLine(leaderPlaten, dotPlaten, w - 162, 68, sPlaten, -22);
+      setLeaderLine(leaderRibbon, dotRibbon, w - 162, h - 40, sRibbon, -22);
     }
   }
 
