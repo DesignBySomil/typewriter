@@ -13,24 +13,24 @@ import { createInputSystem } from './input.js';
 const container = document.getElementById('webgl-container');
 const sound = new TypewriterAudio();
 
-// 1. Initialize Scene, Camera, Renderer, RoomEnvironment & Seamless Matte Desk-Mat
+// 1. Initialize Scene, Camera, Renderer, RoomEnvironment & Warm Matte Tabletop
 const sceneSys = createSceneSystem(container);
 const { renderer, scene, camera, bgScene, bgCamera, basketLight } = sceneSys;
 
-// 2. Build 1963 Olivetti Lettera 32 Chassis, Covered Spools & Vibrator
+// 2. Build 1963 Olivetti Lettera 32 Chassis, Screw Heads, Serial Plate, Covered Spools & Vibrator
 const chassis = buildMachineChassis(scene);
 
-// 3. Build 44 Staggered Keys, Wide Shift Keys, Matte Spacebar & Linkage Rods
+// 3. Build 44 Staggered Keys, Wide Shift Keys, Dusty Scuffed Spacebar & Linkage Rods
 const keysSys = buildKeysSystem(chassis.machineRoot, chassis.materials);
 
-// 4. Build Typebasket, 44 Dull Steel Typebars with Oxidised Slugs & Ink-Dust Emitter
+// 4. Build Typebasket, 44 Dull Steel Typebars with Ink-Staining Slugs & Ink-Dust Emitter
 const typebarsSys = buildTypebarsSystem(
   chassis.machineRoot,
   chassis.materials,
   keysSys.printableControllers
 );
 
-// 5. Build Carriage, Matte Rubber Platen, Ribbed Plastic Knobs & Return Lever
+// 5. Build Carriage, Matte Rubber Platen, Indexed Ribbed Knobs & Return Lever
 const carriageSys = buildCarriageSystem(
   chassis.machineRoot,
   chassis.materials,
@@ -46,7 +46,7 @@ const hudSys = createHudSystem(camera, carriageSys.carriageGroup);
 /**
  * Returns active column bounds:
  * - Desktop / Landscape: 46 columns (0..46)
- * - Portrait Phones: 36 columns centered on the sheet (cols 5..41) so both platen knobs stay inside the frame
+ * - Portrait Phones: 36 columns centered on the sheet (cols 5..41) so both platen knobs stay inside the ~4% margin frame
  */
 function getActiveColumnBounds() {
   const isPortrait = (window.innerWidth / Math.max(1, window.innerHeight)) < 0.92;
@@ -104,7 +104,7 @@ function handlePrintableKey(ctrl, explicitChar = null) {
   const bounds = getActiveColumnBounds();
   if (telemetry.col < bounds.minCol) telemetry.col = bounds.minCol;
 
-  // Deep 3-4px equivalent key sink + neighbor ripple
+  // Deep 3-4px equivalent key sink + return spring overshoot + neighbor ripple
   keysSys.depressKey(ctrl, 0.34);
   sound.playKeyClack(0.95 + Math.random() * 0.1);
 
@@ -116,7 +116,7 @@ function handlePrintableKey(ctrl, explicitChar = null) {
 
   if (telemetry.col >= bounds.maxCol) {
     telemetry.marginLocked = true;
-    typebarsSys.triggerBarSwing(ctrl, true, null);
+    typebarsSys.triggerBarSwing(ctrl, true, null, telemetry.ribbonColor);
     sound.playCarriageAdvanceClick(0.01);
     hudSys.triggerBellFlash();
     return;
@@ -159,7 +159,7 @@ function handlePrintableKey(ctrl, explicitChar = null) {
     telemetry.cameraShake = 0.012;
     telemetry.cameraNudgeY = -0.020;
     sound.playStrikeImpact();
-  });
+  }, targetRibbon);
 }
 
 function handleSpace() {
@@ -343,7 +343,6 @@ function animate() {
 
   sceneSys.bgUniforms.uTime.value = elapsedTotal;
 
-  // Very gentle warm studio fill inside the typebasket
   basketLight.intensity = 0.38 + Math.sin(elapsedTotal * 1.6) * 0.03;
 
   keysSys.updateKeys(dt);
@@ -352,7 +351,7 @@ function animate() {
   paperSys.updatePaper(dt, elapsedTotal);
 
   telemetry.vibratorLiftY *= Math.exp(-dt * 24.0);
-  chassis.vibratorGroup.position.y = 2.64 + telemetry.vibratorLiftY;
+  chassis.vibratorGroup.position.y = 2.66 + telemetry.vibratorLiftY;
 
   const introProgress = Math.min(1.0, elapsedTotal / 2.0);
   const introEase = 1.0 - Math.pow(1.0 - introProgress, 3.0);
