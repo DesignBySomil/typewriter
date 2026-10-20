@@ -2,8 +2,8 @@ import * as THREE from 'three';
 
 /**
  * Handles physical keyboard events (with an immediate zero-drop queue so rapid typing
- * at 12+ chars/sec never drops a single character), 3D raycast clicking/tapping on keys,
- * and a hidden mobile text input.
+ * at 12+ chars/sec never drops a single character), 'Escape' clean-screenshot HUD toggle,
+ * 3D raycast clicking/tapping on keys, and a hidden mobile text input.
  */
 export function createInputSystem({
   rendererDom,
@@ -16,7 +16,8 @@ export function createInputSystem({
   onBackspace,
   onCarriageReturn,
   onShiftChange,
-  onToggleRibbonColor
+  onToggleRibbonColor,
+  onToggleHudVisibility
 }) {
   const raycaster = new THREE.Raycaster();
   const pointerNDC = new THREE.Vector2(0, 0);
@@ -35,6 +36,13 @@ export function createInputSystem({
 
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // Escape key toggles HUD visibility for clean screenshots
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (onToggleHudVisibility) onToggleHudVisibility();
+      return;
+    }
 
     // Ignore held-key auto-repeat so holding a key doesn't spam, while rapid distinct keydowns queue immediately
     if (e.repeat) return;
