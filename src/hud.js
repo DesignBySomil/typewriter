@@ -48,7 +48,6 @@ export function createHudSystem(camera, carriageGroup) {
       <path class="corner-tick" d="M ${w - pad - len} ${h - pad} L ${w - pad} ${h - pad} L ${w - pad} ${h - pad - len}" />
     `;
 
-    // Anchor HUD cards strictly into the 4 outer viewport corners
     cardCarriage.setAttribute('transform', `translate(14, 42)`);
     cardPlaten.setAttribute('transform', `translate(${w - 162}, 42)`);
     cardBasket.setAttribute('transform', `translate(14, ${h - 84})`);
@@ -74,11 +73,10 @@ export function createHudSystem(camera, carriageGroup) {
     dotEl.setAttribute('cy', ty.toFixed(1));
   }
 
-  // Exact 3D anchor points on actual machine components
   const anchorCarriageW = new THREE.Vector3();
   const anchorPlatenW   = new THREE.Vector3();
-  const anchorBasketW   = new THREE.Vector3(-1.35, 1.85, -0.25); // Slotted typebasket arc
-  const anchorRibbonW   = new THREE.Vector3(3.35, 2.62, 0.45);   // Right bichrome ribbon spool
+  const anchorBasketW   = new THREE.Vector3(-1.25, 1.68, -0.25); // Slotted segment arc
+  const anchorRibbonW   = new THREE.Vector3(3.35, 2.34, 0.42);   // Right covered ribbon spool
 
   function triggerBellFlash() {
     if (!boxCarriage) return;
@@ -86,12 +84,14 @@ export function createHudSystem(camera, carriageGroup) {
     setTimeout(() => boxCarriage.classList.remove('bell-flash'), 650);
   }
 
-  function updateHud(telemetry) {
-    const mmPos = (telemetry.col * 3.4).toFixed(1);
-    const colStr = String(telemetry.col + 1).padStart(2, '0');
-    hudValCarriage.textContent = `${mmPos} mm [${colStr}/${CONFIG.maxCols}]`;
+  function updateHud(telemetry, bounds) {
+    const relCol = Math.max(0, telemetry.col - bounds.minCol);
+    const totalCols = bounds.totalCols;
+    const mmPos = (relCol * 3.4).toFixed(1);
+    const colStr = String(relCol + 1).padStart(2, '0');
+    hudValCarriage.textContent = `${mmPos} mm [${colStr}/${totalCols}]`;
 
-    const bellRemaining = (CONFIG.maxCols - CONFIG.bellOffset) - telemetry.col;
+    const bellRemaining = (bounds.maxCol - CONFIG.bellOffset) - telemetry.col;
     if (telemetry.marginLocked) {
       hudValBell.textContent = 'MARGIN LOCKED [CR]';
       hudValBell.style.fill = '#f25f4c';
@@ -99,7 +99,7 @@ export function createHudSystem(camera, carriageGroup) {
       hudValBell.textContent = `BELL IN: ${bellRemaining} CHARS`;
       hudValBell.style.fill = '#72d6c9';
     } else {
-      hudValBell.textContent = `BELL RUNG // ${CONFIG.maxCols - telemetry.col} LEFT`;
+      hudValBell.textContent = `BELL RUNG // ${Math.max(0, bounds.maxCol - telemetry.col)} LEFT`;
       hudValBell.style.fill = '#e8b878';
     }
 
@@ -115,9 +115,9 @@ export function createHudSystem(camera, carriageGroup) {
     hudValRibbon.style.fill = telemetry.ribbonColor === 'red' ? '#f25f4c' : '#fff8ed';
     hudValSpool.textContent = `SPOOL: ${telemetry.spoolAngle.toFixed(2)} RAD`;
 
-    // Compact mobile readout update
+    // Single bottom bar readout for portrait / narrow screens
     if (compactCol) {
-      compactCol.textContent = `POS: ${mmPos}mm`;
+      compactCol.textContent = `POS: ${mmPos}mm [${colStr}/${totalCols}]`;
       compactLine.textContent = `LN: ${lineStr}/${CONFIG.maxLinesPerPage}`;
       compactKey.textContent = `KEY: ${telemetry.lastKeyLabel}`;
       compactStrikes.textContent = `STR: ${telemetry.strikes}`;
@@ -128,19 +128,17 @@ export function createHudSystem(camera, carriageGroup) {
     const pts = telemetry.strikeIntervals.map((val, idx) => {
       const x = 8 + (idx / Math.max(1, telemetry.strikeIntervals.length - 1)) * 132;
       const norm = 1.0 - Math.min(1.0, (val - 30) / 420);
-      const y = 64 - norm * 15;
+      const y = 62 - norm * 15;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
     hudSparkline.setAttribute('points', pts);
 
-    // Project 3D anchors to 2D SVG leader lines ending directly on the physical machine parts
+    // Project 3D anchors to 2D SVG leader lines on desktop
     const w = window.innerWidth;
     const h = window.innerHeight;
     if (w >= 820 && h >= 560) {
-      // Left carriage return lever / end-plate
-      anchorCarriageW.set(carriageGroup.position.x - 5.45, 3.65, -0.95);
-      // Right rubber platen roller end-cap
-      anchorPlatenW.set(carriageGroup.position.x + 5.15, 3.45, -1.15);
+      anchorCarriageW.set(carriageGroup.position.x - 5.05, 3.32, -0.95);
+      anchorPlatenW.set(carriageGroup.position.x + 4.85, 3.12, -1.12);
 
       const sCarriage = projectWorldToScreen(anchorCarriageW);
       const sPlaten   = projectWorldToScreen(anchorPlatenW);
