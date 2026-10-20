@@ -180,7 +180,7 @@ export function createInputSystem({
     mobileInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); }
     });
-    ['btn-kb', 'btn-kb-m'].forEach((id) => {
+    ['btn-kb', 'btn-kb-m', 'btn-kb-big'].forEach((id) => {
       document.getElementById(id)?.addEventListener('click', (e) => { e.preventDefault(); openKeyboard(); });
     });
     // Tapping the typewriter or paper opens the keyboard on touch devices
