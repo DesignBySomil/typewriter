@@ -39,10 +39,8 @@ export function createPaperSystem(carriageGroup) {
   }
 
   /**
-   * Stamps a typewriter glyph onto the 2048x2048 CanvasTexture:
-   * - On desktop (46 columns): uses 46-column step (`paperCharPxX`) and 66px bold font.
-   * - On portrait phone (36 columns): spaces 36 columns across the sheet width (`51.5px` step)
-   *   and uses a larger 76px bold font so text is effortlessly legible on 390x780 screens!
+   * Stamps a typewriter glyph onto the 2048x2048 CanvasTexture,
+   * complete with ribbon ink halo, heavier core, and 3-6 tiny ink spatter specks around the letter.
    */
   function stampCharacter(char, col, _unusedOffset = 0, ribbonColor = 'black', absoluteLineId = 0) {
     const key = `${absoluteLineId}:${col}`;
@@ -54,9 +52,8 @@ export function createPaperSystem(carriageGroup) {
     let fontSizePx = 66;
 
     if (isPortrait) {
-      // Map the 36 portrait columns (col 5..40) across the full readable width of the sheet
       const relCol = Math.max(0, col - 5);
-      const portraitStepPx = (CONFIG.paperCanvasW - 220) / CONFIG.portraitCols; // ~50.8px per char
+      const portraitStepPx = (CONFIG.paperCanvasW - 220) / CONFIG.portraitCols;
       centerX = 110 + relCol * portraitStepPx;
       fontSizePx = 76;
     }
@@ -81,21 +78,36 @@ export function createPaperSystem(carriageGroup) {
     paperCtx.textAlign = 'center';
     paperCtx.textBaseline = 'alphabetic';
 
-    // Lighter ink-bleed halo around glyph
+    // 1. Lighter ink-bleed halo around glyph
     paperCtx.shadowColor = `rgb(${Math.floor(rVal * 0.65)}, ${Math.floor(gVal * 0.65)}, ${Math.floor(bVal * 0.72)})`;
     paperCtx.shadowBlur = 4.5;
     paperCtx.fillStyle = `rgb(${Math.floor(rVal * 0.85)}, ${Math.floor(gVal * 0.85)}, ${Math.floor(bVal * 0.85)})`;
     paperCtx.fillText(char, 0, 0);
 
-    // Darker, heavier ink core
+    // 2. Darker, heavier ink core
     paperCtx.shadowBlur = 0;
     paperCtx.fillStyle = `rgb(${rVal}, ${gVal}, ${bVal})`;
     paperCtx.fillText(char, 0, 0);
     paperCtx.lineWidth = 1.8;
     paperCtx.strokeStyle = `rgb(${rVal}, ${gVal}, ${bVal})`;
     paperCtx.strokeText(char, (Math.random() - 0.5) * 0.7, (Math.random() - 0.5) * 0.7);
-    paperCtx.restore();
 
+    // 3. A few tiny microscopic ink specks / ribbon spatter dots near the struck letter
+    const speckCount = 3 + Math.floor(Math.random() * 4);
+    for (let s = 0; s < speckCount; s++) {
+      const sx = (Math.random() - 0.5) * (fontSizePx * 0.78);
+      const sy = -fontSizePx * 0.35 + (Math.random() - 0.5) * (fontSizePx * 0.82);
+      const sRad = 0.8 + Math.random() * 1.4;
+      const sIntensity = Math.floor(baseDensity * (0.45 + Math.random() * 0.45));
+      const sr = ribbonColor === 'black' ? sIntensity : 0;
+      const sg = ribbonColor === 'red'   ? sIntensity : 0;
+      paperCtx.fillStyle = `rgb(${sr}, ${sg}, ${sIntensity})`;
+      paperCtx.beginPath();
+      paperCtx.arc(sx, sy, sRad, 0, Math.PI * 2);
+      paperCtx.fill();
+    }
+
+    paperCtx.restore();
     paperTexture.needsUpdate = true;
   }
 
