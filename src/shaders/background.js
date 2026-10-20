@@ -17,42 +17,21 @@ export const BACKGROUND_FRAGMENT_SHADER = /* glsl */`
     return fract(p.x * p.y);
   }
 
-  float dustLayer(vec2 uv, float scale, float speed, float seed) {
-    vec2 p = uv * scale;
-    p.y -= uTime * speed;
-    p.x += sin(uTime * 0.28 + seed + uv.y * 3.2) * 0.38;
-    vec2 id = floor(p);
-    vec2 f = fract(p) - 0.5;
-    float h = hash21(id + seed);
-    if (h < 0.90) return 0.0;
-    vec2 offset = vec2(fract(h * 13.7) - 0.5, fract(h * 29.3) - 0.5) * 0.52;
-    float d = length(f - offset);
-    float twinkle = 0.5 + 0.5 * sin(uTime * 2.1 + h * 62.8);
-    return smoothstep(0.09, 0.0, d) * twinkle * (h - 0.90) * 10.5;
-  }
-
   void main() {
     vec2 aspectUv = (vUv - 0.5) * vec2(uResolution.x / max(uResolution.y, 1.0), 1.0);
     float dist = length(aspectUv);
 
-    // Warm dark studio vignette gradient
-    vec3 centerCol = vec3(0.18, 0.145, 0.118);
-    vec3 edgeCol   = vec3(0.032, 0.027, 0.024);
-    vec3 col = mix(centerCol, edgeCol, smoothstep(0.05, 1.08, dist));
+    // Seamless matte dark studio backdrop matching the desk surface tone (zero horizon band)
+    vec3 centerCol = vec3(0.115, 0.104, 0.095);
+    vec3 edgeCol   = vec3(0.038, 0.034, 0.031);
+    vec3 col = mix(centerCol, edgeCol, smoothstep(0.0, 1.15, dist));
 
-    // Warm upper key-light volumetriccone glow
-    float topGlow = exp(-length(aspectUv - vec2(-0.12, 0.28)) * 2.1);
-    col += vec3(0.095, 0.064, 0.035) * topGlow;
+    // Very soft upper-left studio softbox ambient falloff
+    float softboxFalloff = exp(-length(aspectUv - vec2(-0.22, 0.24)) * 2.2);
+    col += vec3(0.032, 0.028, 0.022) * softboxFalloff;
 
-    // 3 parallax layers of slow floating dust motes catching the studio light
-    float dust = 0.0;
-    dust += dustLayer(aspectUv, 7.5,  0.045, 1.1) * 0.65;
-    dust += dustLayer(aspectUv, 13.5, 0.075, 4.7) * 0.45;
-    dust += dustLayer(aspectUv, 21.0, 0.105, 9.3) * 0.30;
-    col += vec3(0.98, 0.82, 0.58) * dust * smoothstep(1.0, 0.15, dist);
-
-    // Subtle analog film grain
-    float grain = (hash21(vUv * uResolution + fract(uTime * 17.3)) - 0.5) * 0.022;
+    // Very mild analog film grain
+    float grain = (hash21(vUv * uResolution + fract(uTime * 11.7)) - 0.5) * 0.015;
     col += grain;
 
     gl_FragColor = vec4(max(col, 0.0), 1.0);
