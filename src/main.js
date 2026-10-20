@@ -13,7 +13,7 @@ import { createInputSystem } from './input.js';
 const container = document.getElementById('webgl-container');
 const sound = new TypewriterAudio();
 
-// 1. Initialize Scene, Camera, Renderer, RoomEnvironment & Tabletop
+// 1. Initialize Scene, Camera, Renderer, RoomEnvironment & Seamless Matte Desk-Mat
 const sceneSys = createSceneSystem(container);
 const { renderer, scene, camera, bgScene, bgCamera, basketLight } = sceneSys;
 
@@ -46,7 +46,7 @@ const hudSys = createHudSystem(camera, carriageSys.carriageGroup);
 /**
  * Returns active column bounds:
  * - Desktop / Landscape: 46 columns (0..46)
- * - Portrait Phones: 36 columns centered on the sheet (cols 5..41) so both platen knobs stay in frame
+ * - Portrait Phones: 36 columns centered on the sheet (cols 5..41) so both platen knobs stay inside the frame
  */
 function getActiveColumnBounds() {
   const isPortrait = (window.innerWidth / Math.max(1, window.innerHeight)) < 0.92;
@@ -114,7 +114,6 @@ function handlePrintableKey(ctrl, explicitChar = null) {
 
   telemetry.lastKeyLabel = `'${charToPrint}'`;
 
-  // Check if carriage is locked at the active right margin
   if (telemetry.col >= bounds.maxCol) {
     telemetry.marginLocked = true;
     typebarsSys.triggerBarSwing(ctrl, true, null);
@@ -123,7 +122,6 @@ function handlePrintableKey(ctrl, explicitChar = null) {
     return;
   }
 
-  // Record strike interval for HUD sparkline
   const now = performance.now();
   const dtMs = Math.min(500, Math.max(25, now - telemetry.lastStrikeTime));
   telemetry.lastStrikeTime = now;
@@ -134,7 +132,6 @@ function handlePrintableKey(ctrl, explicitChar = null) {
   const targetLineId = telemetry.totalLinesTyped;
   const targetRibbon = telemetry.ribbonColor;
 
-  // Stamp character onto 80gsm bond paper canvas & advance carriage one char width left
   paperSys.stampCharacter(charToPrint, targetCol, 0, targetRibbon, targetLineId);
 
   telemetry.strikes++;
@@ -144,11 +141,9 @@ function handlePrintableKey(ctrl, explicitChar = null) {
   chassis.spoolGroupLeft.rotation.y = telemetry.spoolAngle;
   chassis.spoolGroupRight.rotation.y = telemetry.spoolAngle;
 
-  // Advance column & translate carriage left so the struck character sits at world X = 0
   telemetry.col = Math.min(bounds.maxCol, telemetry.col + 1);
-  carriageSys.advanceToCol(telemetry.col, -0.45);
+  carriageSys.advanceToCol(telemetry.col, -0.42);
 
-  // Ring margin bell 8 characters before active right margin
   if (telemetry.col === bounds.maxCol - CONFIG.bellOffset) {
     sound.playMarginBell();
     hudSys.triggerBellFlash();
@@ -157,13 +152,12 @@ function handlePrintableKey(ctrl, explicitChar = null) {
     telemetry.marginLocked = true;
   }
 
-  // Trigger typebar swing + physical impact effects at strike apex
   typebarsSys.triggerBarSwing(ctrl, false, () => {
     carriageSys.triggerPlatenRecoil();
     typebarsSys.triggerInkDustPuff(targetRibbon);
     telemetry.vibratorLiftY = targetRibbon === 'red' ? 0.22 : 0.13;
     telemetry.cameraShake = 0.012;
-    telemetry.cameraNudgeY = -0.020; // Crisp ~1px vertical camera nudge at impact
+    telemetry.cameraNudgeY = -0.020;
     sound.playStrikeImpact();
   });
 }
@@ -185,7 +179,7 @@ function handleSpace() {
   }
 
   telemetry.col++;
-  carriageSys.advanceToCol(telemetry.col, -0.36);
+  carriageSys.advanceToCol(telemetry.col, -0.34);
   sound.playCarriageAdvanceClick(0.02);
 
   if (telemetry.col === bounds.maxCol - CONFIG.bellOffset) {
@@ -210,7 +204,7 @@ function handleBackspace() {
   if (telemetry.col > bounds.minCol) {
     telemetry.col--;
     telemetry.marginLocked = false;
-    carriageSys.advanceToCol(telemetry.col, 0.36);
+    carriageSys.advanceToCol(telemetry.col, 0.34);
     sound.playCarriageAdvanceClick(0.02);
   }
 }
@@ -325,6 +319,9 @@ window.addEventListener('resize', () => {
   if (telemetry.col < b.minCol) {
     telemetry.col = b.minCol;
     carriageSys.advanceToCol(telemetry.col, 0);
+  } else if (telemetry.col > b.maxCol) {
+    telemetry.col = b.maxCol;
+    carriageSys.advanceToCol(telemetry.col, 0);
   }
 });
 
@@ -339,7 +336,6 @@ const spherical = new THREE.Spherical();
 function animate() {
   requestAnimationFrame(animate);
 
-  // Process any queued keystrokes immediately at frame start
   inputSys.processQueue();
 
   const dt = Math.min(0.05, clock.getDelta());
@@ -347,20 +343,17 @@ function animate() {
 
   sceneSys.bgUniforms.uTime.value = elapsedTotal;
 
-  // Subtle warm studio light inside the typebasket
-  basketLight.intensity = 0.55 + Math.sin(elapsedTotal * 1.8) * 0.06;
+  // Very gentle warm studio fill inside the typebasket
+  basketLight.intensity = 0.38 + Math.sin(elapsedTotal * 1.6) * 0.03;
 
-  // Update mechanical subsystems
   keysSys.updateKeys(dt);
   typebarsSys.updateTypebars(dt);
   carriageSys.updateCarriage(dt);
   paperSys.updatePaper(dt, elapsedTotal);
 
-  // Ribbon vibrator lift decay
   telemetry.vibratorLiftY *= Math.exp(-dt * 24.0);
-  chassis.vibratorGroup.position.y = 2.66 + telemetry.vibratorLiftY;
+  chassis.vibratorGroup.position.y = 2.64 + telemetry.vibratorLiftY;
 
-  // Camera 2s ease-in intro push + ~3-degree pointer parallax + subtle idle drift
   const introProgress = Math.min(1.0, elapsedTotal / 2.0);
   const introEase = 1.0 - Math.pow(1.0 - introProgress, 3.0);
 
@@ -368,14 +361,14 @@ function animate() {
   smoothPointer.y += (inputSys.pointerNDC.y - smoothPointer.y) * Math.min(1.0, dt * 5.0);
 
   const basePose = sceneSys.computeFittedCameraPose();
-  const introPush = (1.0 - introEase) * 1.5;
+  const introPush = (1.0 - introEase) * 1.4;
 
   camOffsetVec.copy(basePose.pos).sub(basePose.lookAt);
   spherical.setFromVector3(camOffsetVec);
 
   const maxParallaxRad = THREE.MathUtils.degToRad(3.0);
-  const idleDriftAzimuth = Math.sin(elapsedTotal * 0.50) * 0.006;
-  const idleDriftPolar   = Math.cos(elapsedTotal * 0.38) * 0.005;
+  const idleDriftAzimuth = Math.sin(elapsedTotal * 0.45) * 0.005;
+  const idleDriftPolar   = Math.cos(elapsedTotal * 0.35) * 0.004;
 
   spherical.theta += smoothPointer.x * maxParallaxRad + idleDriftAzimuth;
   spherical.phi = THREE.MathUtils.clamp(
@@ -397,14 +390,12 @@ function animate() {
   camera.position.y += shakeY;
 
   currentLookAt.copy(basePose.lookAt);
-  currentLookAt.x += smoothPointer.x * 0.11;
-  currentLookAt.y += smoothPointer.y * 0.07 + shakeY * 0.65;
+  currentLookAt.x += smoothPointer.x * 0.10;
+  currentLookAt.y += smoothPointer.y * 0.06 + shakeY * 0.65;
   camera.lookAt(currentLookAt);
 
-  // Update SVG Telemetry HUD
   hudSys.updateHud(telemetry, getActiveColumnBounds());
 
-  // Render Background + Main 3D Scene
   renderer.clear();
   renderer.render(bgScene, bgCamera);
   renderer.clearDepth();
