@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>OLIVETTI // STUDIO 44 — Interactive 3D Mechanical Typewriter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Special+Elite&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="webgl-container"></div>
+
+  <!-- Top Telemetry Header & Controls -->
+  <header id="top-bar">
+    <div class="brand-block">
+      <div class="brand-name">STUDIO 44 // MECHANICAL TELEMETRY</div>
+      <div class="brand-meta">44-BAR SEGMENT BASKET · LETTERPRESS DEBOSS SHADER · BICHROME RIBBON [TAB]</div>
+    </div>
+    <div class="hud-controls">
+      <button id="btn-ribbon" class="hud-btn" title="Toggle Black / Red Bichrome Ribbon (Tab)">RIBBON: BLK</button>
+      <button id="btn-sheet" class="hud-btn" title="Feed Fresh Archival Sheet">NEW SHEET</button>
+      <button id="btn-kb" class="hud-btn" title="Focus Virtual Keyboard for Mobile">KEYBOARD</button>
+      <button id="btn-return" class="hud-btn" title="Carriage Return (Enter)">CR / LF ↵</button>
+      <button id="btn-mute" class="hud-btn active" title="Toggle Synthesized Mechanical Audio">AUDIO: ON</button>
+    </div>
+  </header>
+
+  <!-- Full-screen SVG Telemetry HUD (Corner-anchored, never covers keys) -->
+  <svg id="hud-overlay" xmlns="http://www.w3.org/2000/svg">
+    <g id="hud-corners"></g>
+
+    <!-- Leader Lines & Target Anchor Dots -->
+    <g id="hud-leaders">
+      <polyline id="leader-carriage" class="leader-line" points="0,0 0,0 0,0" />
+      <circle id="dot-carriage" class="leader-dot" cx="0" cy="0" r="2.5" />
+
+      <polyline id="leader-basket" class="leader-line" points="0,0 0,0 0,0" />
+      <circle id="dot-basket" class="leader-dot" cx="0" cy="0" r="2.5" />
+
+      <polyline id="leader-platen" class="leader-line" points="0,0 0,0 0,0" />
+      <circle id="dot-platen" class="leader-dot" cx="0" cy="0" r="2.5" />
+
+      <polyline id="leader-ribbon" class="leader-line" points="0,0 0,0 0,0" />
+      <circle id="dot-ribbon" class="leader-dot" cx="0" cy="0" r="2.5" />
+    </g>
+
+    <!-- Compact Corner-Anchored Telemetry Cards -->
+    <g id="hud-cards-group">
+      <!-- 1. Carriage & Bell Card (Top Left Corner) -->
+      <g id="card-carriage" transform="translate(16, 48)">
+        <rect id="box-carriage" class="hud-box" x="0" y="0" width="152" height="54" rx="2" />
+        <text class="hud-title" x="8" y="13">CARRIAGE POS</text>
+        <text id="hud-val-carriage" class="hud-value" x="8" y="29">0.0 mm [01/62]</text>
+        <text id="hud-val-bell" class="hud-sub" x="8" y="44">BELL IN: 54 CHARS</text>
+      </g>
+
+      <!-- 2. Platen & Line Feed Card (Top Right Corner) -->
+      <g id="card-platen" transform="translate(16, 110)">
+        <rect class="hud-box" x="0" y="0" width="152" height="54" rx="2" />
+        <text class="hud-title" x="8" y="13">PLATEN // PAGE</text>
+        <text id="hud-val-line" class="hud-value" x="8" y="29">LINE 01 / 28</text>
+        <text id="hud-val-case" class="hud-sub" x="8" y="44">BASKET: LOWER</text>
+      </g>
+
+      <!-- 3. Typebasket & Strike Interval Sparkline (Bottom Left Corner) -->
+      <g id="card-basket" transform="translate(16, 180)">
+        <rect class="hud-box" x="0" y="0" width="152" height="72" rx="2" />
+        <text class="hud-title" x="8" y="13">TYPEBASKET</text>
+        <text id="hud-val-lastkey" class="hud-value" x="8" y="28">LAST: [NONE]</text>
+        <text id="hud-val-strikes" class="hud-sub" x="8" y="41">STRIKES: 0000</text>
+        <polyline id="hud-sparkline" fill="none" stroke="#72d6c9" stroke-width="1.3" points="8,64 144,64" />
+      </g>
+
+      <!-- 4. Ribbon & Ink Telemetry (Bottom Right Corner) -->
+      <g id="card-ribbon" transform="translate(16, 260)">
+        <rect class="hud-box" x="0" y="0" width="152" height="54" rx="2" />
+        <text class="hud-title" x="8" y="13">BICHROME RIBBON</text>
+        <text id="hud-val-ribbon" class="hud-value" x="8" y="29">BLACK // 100.0%</text>
+        <text id="hud-val-spool" class="hud-sub" x="8" y="44">SPOOL: 0.00 RAD</text>
+      </g>
+    </g>
+  </svg>
+
+  <!-- Compact One-Line Readout for Small / Portrait Screens -->
+  <div id="compact-telemetry">
+    <span id="compact-col">POS: 0.0mm</span>
+    <span id="compact-line">LN: 01/28</span>
+    <span id="compact-key">KEY: -</span>
+    <span id="compact-strikes">STR: 0</span>
+    <span id="compact-bell">BELL: 54</span>
+  </div>
+
+  <!-- Center Intro Prompt -->
+  <div id="intro-prompt">
+    <div class="prompt-pill">TYPE ON YOUR KEYBOARD</div>
+    <div class="prompt-sub">CLICK KEYS · [ENTER] CARRIAGE RETURN · [TAB] RED/BLACK RIBBON</div>
+  </div>
+
+  <!-- Hidden input for mobile virtual keyboard support -->
+  <input id="mobile-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
