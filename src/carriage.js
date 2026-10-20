@@ -233,13 +233,34 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     state.velX += overshootImpulse;
   }
 
+  /**
+   * Continuous 1:1 carriage slide during horizontal finger/mouse drag
+   */
+  function setCarriageColContinuous(fractionalCol) {
+    const x = computeCarriageXForCol(fractionalCol);
+    state.targetX = x;
+    state.velX = 0;
+    carriageGroup.position.x = x;
+  }
+
   function triggerPlatenRecoil() {
     state.platenRecoilZ = -0.034;
   }
 
-  function rotatePlatenByLines(deltaLines) {
-    state.platenTargetRotX -= deltaLines * 0.55;
-    state.platenRotVelX -= Math.sign(deltaLines) * 1.4;
+  /**
+   * Rotates platen roller & knobs by `deltaLines`.
+   * When `immediate` is true (1:1 finger drag), rotates immediately without spring lag.
+   */
+  function rotatePlatenByLines(deltaLines, immediate = false) {
+    const dAngle = -deltaLines * 0.55;
+    state.platenTargetRotX += dAngle;
+    if (immediate) {
+      state.platenCurrentRotX += dAngle;
+      state.platenRotVelX = 0;
+      platenRollerGroup.rotation.x = state.platenCurrentRotX;
+    } else {
+      state.platenRotVelX -= Math.sign(deltaLines) * 1.4;
+    }
   }
 
   function triggerCarriageReturnMotion(startCol = 0) {
@@ -286,6 +307,9 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     carriageGroup,
     platenRollerGroup,
     platenMesh,
+    paperTableMesh,
+    leftCarriagePlate,
+    rightCarriagePlate,
     leftKnob,
     rightKnob,
     returnLeverGroup,
@@ -297,6 +321,7 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     colToLocalPaperX,
     localPaperXToCol,
     advanceToCol,
+    setCarriageColContinuous,
     triggerPlatenRecoil,
     rotatePlatenByLines,
     triggerCarriageReturnMotion,
