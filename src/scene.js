@@ -3,10 +3,6 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CONFIG } from './config.js';
 import { BACKGROUND_VERTEX_SHADER, BACKGROUND_FRAGMENT_SHADER } from './shaders/background.js';
 
-/**
- * Generates a soft baked Ambient Occlusion contact-shadow CanvasTexture
- * placed directly beneath the typewriter chassis and rubber feet.
- */
 function createBakedContactShadowTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -15,7 +11,6 @@ function createBakedContactShadowTexture() {
 
   ctx.clearRect(0, 0, 512, 512);
 
-  // Gentle elliptical body ambient occlusion shadow
   ctx.save();
   ctx.translate(256, 268);
   ctx.scale(1.18, 0.96);
@@ -30,7 +25,6 @@ function createBakedContactShadowTexture() {
   ctx.fill();
   ctx.restore();
 
-  // Four darker contact AO spots under the four rubber feet
   const feetCoords = [
     [118, 152],
     [394, 152],
@@ -66,7 +60,6 @@ export function createSceneSystem(container) {
   renderer.autoClear = false;
   container.appendChild(renderer.domElement);
 
-  // 1. Full-Screen Seamless Background Shader
   const bgScene = new THREE.Scene();
   const bgCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const bgUniforms = {
@@ -83,7 +76,6 @@ export function createSceneSystem(container) {
   });
   bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMaterial));
 
-  // 2. Main 3D Scene, Camera & Low-Intensity RoomEnvironment PMREM (sigma = 0.035 <= 0.04)
   const scene = new THREE.Scene();
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
   pmremGenerator.compileEquirectangularShader();
@@ -94,7 +86,6 @@ export function createSceneSystem(container) {
 
   const camera = new THREE.PerspectiveCamera(29, window.innerWidth / window.innerHeight, 0.1, 160);
 
-  // 3. Photographic Studio Lighting
   const hemiBounce = new THREE.HemisphereLight(0xf2e8d8, 0x362d26, 0.62);
   hemiBounce.position.set(0, 10, 0);
   scene.add(hemiBounce);
@@ -127,7 +118,6 @@ export function createSceneSystem(container) {
   basketLight.position.set(0, 2.7, 0.7);
   scene.add(basketLight);
 
-  // 4. Warm Matte Tabletop Surface under and around the machine (never empty black in portrait!)
   const tableMat = new THREE.MeshStandardMaterial({
     color: 0x261e18,
     roughness: 0.92,
@@ -153,7 +143,6 @@ export function createSceneSystem(container) {
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-         // Fine warm walnut/linen desk texture
          vec2 wp = vWorldPosTable.xz * vec2(2.2, 7.5);
          float fw = length(fwidth(wp));
          float grainFade = 1.0 - smoothstep(0.3, 1.4, fw);
@@ -162,17 +151,14 @@ export function createSceneSystem(container) {
 
          vec3 baseDesk = vec3(0.125, 0.098, 0.076) + vec3(0.018, 0.013, 0.009) * (woodFiber + crossWeave);
 
-         // Broad warm pool of light illuminating the table in front of and behind the machine
          float distPool = length((vWorldPosTable.xz - vec2(-0.5, 2.2)) * vec2(0.42, 0.36));
          float warmPool = exp(-distPool * distPool * 0.022);
          vec3 litDesk = baseDesk + vec3(0.068, 0.050, 0.034) * warmPool;
 
-         // Gentle rightward shadow lobe from upper-left softbox
          vec2 rightShadowDelta = (vWorldPosTable.xz - vec2(3.8, -0.5)) * vec2(0.18, 0.28);
          float rightShadow = exp(-dot(rightShadowDelta, rightShadowDelta));
          float castLobeAO = 1.0 - rightShadow * 0.28;
 
-         // Smooth outer vignette so table blends seamlessly with background at far distances
          float radialDist = length((vWorldPosTable.xz - vec2(0.0, 2.0)) * vec2(0.45, 0.38));
          float outerFade = smoothstep(28.0, 6.0, radialDist);
          vec3 bgEdgeTone = vec3(0.045, 0.038, 0.033);
@@ -187,7 +173,6 @@ export function createSceneSystem(container) {
   tableMesh.receiveShadow = true;
   scene.add(tableMesh);
 
-  // Baked Blurred Contact-Shadow / AO Plane directly under the body & rubber feet
   const aoPlaneMat = new THREE.MeshBasicMaterial({
     map: createBakedContactShadowTexture(),
     transparent: true,
@@ -206,13 +191,13 @@ export function createSceneSystem(container) {
   const relVec = new THREE.Vector3();
 
   /**
-   * Exact 8-Corner View-Space Bounding-Box Fit:
-   * - Portrait phones (390x780, 430x932):
-   *   Fits the full width including both ribbed knobs (`X: [-6.12, +6.12]`) with ~4% side margin on both sides
-   *   (`marginScale = 1.09`), and automatically centers the vertical span (from sheet top `Y = 5.82` to
-   *   front base edge `Y = 0.0, Z = 4.95`) so there is equal space above and below the machine!
-   * - Desktop (1280x800) & Landscape phones:
-   *   Unchanged 8-corner bounding-box fit with ~6% margin.
+   * Responsive Camera Composition:
+   * - Portrait phones (aspect < 0.92):
+   *   Explicitly fits the actual platen + knobs half-width (5.78 units at Z = -1.16) so that the
+   *   visible machine spans ~96% of the screen width (`halfWidth / 0.96`), centered horizontally
+   *   and vertically!
+   * - Desktop & Landscape phones:
+   *   8-corner view-space bounding-box fit with ~6% margin.
    */
   function computeFittedCameraPose() {
     const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -228,20 +213,50 @@ export function createSceneSystem(container) {
     const tanHalfVFov = Math.tan(vFovRad * 0.5);
     const tanHalfHFov = tanHalfVFov * aspect;
 
-    const viewDir = isPortrait
-      ? new THREE.Vector3(0.0, 0.49, 0.872).normalize()
-      : new THREE.Vector3(0.02, 0.54, 0.841).normalize();
+    if (isPortrait) {
+      const viewDir = new THREE.Vector3(0.0, 0.49, 0.872).normalize();
+      rightAxis.crossVectors(worldUp, viewDir).normalize();
+      upAxis.crossVectors(viewDir, rightAxis).normalize();
 
+      // Center of the machine + sheet composition
+      const lookAt = new THREE.Vector3(0.0, 2.32, 0.85);
+
+      // The widest part of the machine (platen + both ribbed knobs) sits at Y = 2.84, Z = -1.16
+      // with half-width = 5.78 world units; the front chassis cheeks at Z = 2.0 have half-width = 5.12.
+      // Project both planes to guarantee the machine fills ~96% of the portrait screen width!
+      const platenRel = new THREE.Vector3(0, 2.84, -1.16).sub(lookAt);
+      const platenZCam = platenRel.dot(viewDir);
+      const distForPlaten96 = (5.78 / 0.96) / tanHalfHFov + platenZCam;
+
+      const cheekRel = new THREE.Vector3(0, 1.2, 2.5).sub(lookAt);
+      const cheekZCam = cheekRel.dot(viewDir);
+      const distForCheeks96 = (5.12 / 0.96) / tanHalfHFov + cheekZCam;
+
+      const distance = Math.max(distForPlaten96, distForCheeks96);
+
+      // Vertically center the top of the sheet (0, 5.75, -1.65) and front base edge (0, 0.0, 4.85)
+      const topRel = new THREE.Vector3(0, 5.75, -1.65).sub(lookAt);
+      const botRel = new THREE.Vector3(0, 0.0, 4.85).sub(lookAt);
+      const topNdcY = topRel.dot(upAxis) / ((distance - topRel.dot(viewDir)) * tanHalfVFov);
+      const botNdcY = botRel.dot(upAxis) / ((distance - botRel.dot(viewDir)) * tanHalfVFov);
+      const shiftUp = ((topNdcY + botNdcY) * 0.5) * distance * tanHalfVFov * 0.92;
+
+      lookAt.addScaledVector(upAxis, shiftUp);
+      const pos = lookAt.clone().addScaledVector(viewDir, distance);
+      return { pos, lookAt };
+    }
+
+    // Desktop & Landscape Phone
+    const viewDir = new THREE.Vector3(0.02, 0.54, 0.841).normalize();
     rightAxis.crossVectors(worldUp, viewDir).normalize();
     upAxis.crossVectors(viewDir, rightAxis).normalize();
 
-    // On portrait, carriage + both knobs span [-6.12, +6.12]; on desktop, full travel spans [-6.65, +6.85]
-    const minX = isPortrait ? -6.12 : -6.65;
-    const maxX = isPortrait ?  6.12 :  6.85;
+    const minX = -6.65;
+    const maxX =  6.85;
     const minY =  0.0;
-    const maxY = CONFIG.machineBoundsMax.y; // 5.82 (top of curled sheet)
+    const maxY = CONFIG.machineBoundsMax.y;
     const minZ = -2.65;
-    const maxZ =  4.95; // Front edge of the base
+    const maxZ =  4.95;
 
     const center = new THREE.Vector3(
       (minX + maxX) * 0.5,
@@ -262,9 +277,7 @@ export function createSceneSystem(container) {
       }
     }
 
-    // Portrait: ~4% side margin on each side -> usable half-width = 0.918 -> marginScale = 1 / 0.918 = 1.09
-    // Desktop: ~6% margin on all sides -> marginScale = 1.135
-    const marginScale = isPortrait ? 1.09 : 1.135;
+    const marginScale = 1.135;
     let distance = 14.0;
     let shiftRight = 0;
     let shiftUp = 0;
@@ -280,7 +293,6 @@ export function createSceneSystem(container) {
         const yCam = relVec.dot(upAxis) - shiftUp;
         const zCam = relVec.dot(viewDir);
 
-        // Perspective-corrected apparent screen coordinates
         const effDist = Math.max(2.0, distance - zCam);
         const ndcX = xCam / (effDist * tanHalfHFov);
         const ndcY = yCam / (effDist * tanHalfVFov);
@@ -295,7 +307,6 @@ export function createSceneSystem(container) {
         reqDist = Math.max(reqDist, dX, dY);
       }
 
-      // Shift lookAt so min & max projected screen bounds are perfectly centered (equal space above/below & left/right)
       shiftRight += ((minProjX + maxProjX) * 0.5) * distance * tanHalfHFov * 0.85;
       shiftUp    += ((minProjY + maxProjY) * 0.5) * distance * tanHalfVFov * 0.85;
       distance = reqDist;
