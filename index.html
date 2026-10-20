@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>OLIVETTI // STUDIO 44 — Interactive 3D Mechanical Typewriter</title>
+  <title>OLIVETTI // LETTERA 32 — Interactive 3D Mechanical Typewriter</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Special+Elite&display=swap" rel="stylesheet" />
@@ -24,34 +24,33 @@
   <!-- Top Telemetry Header & Controls -->
   <header id="top-bar">
     <div class="brand-block">
-      <div class="brand-name">STUDIO 44 // MECHANICAL TELEMETRY</div>
-      <div class="brand-meta">44-BAR SEGMENT BASKET · LETTERPRESS DEBOSS SHADER · BICHROME RIBBON [TAB]</div>
+      <div class="brand-name">LETTERA 32 // MECHANICAL TELEMETRY</div>
+      <div class="brand-meta">44-BAR SEGMENT BASKET · INTERACTIVE 3D HARDWARE · BICHROME RIBBON [TAB]</div>
     </div>
     <div class="hud-controls">
-      <button id="btn-ribbon" class="hud-btn" title="Toggle Black / Red Bichrome Ribbon (Tab)">RIBBON: BLK</button>
-      <button id="btn-sheet" class="hud-btn" title="Feed Fresh Archival Sheet">NEW SHEET</button>
+      <button id="btn-ribbon" class="hud-btn" title="Cycle Black / Red / Stencil Ribbon (Tab)">RIBBON: BLK</button>
+      <button id="btn-sheet" class="hud-btn" title="Pull Out / Insert Archival Sheet">NEW SHEET</button>
+      <button id="btn-print-save" class="hud-btn" title="Export or Print Typed Page (Ctrl/Cmd+P)">PRINT / SAVE</button>
       <button id="btn-kb" class="hud-btn" title="Focus Virtual Keyboard for Mobile">KEYBOARD</button>
       <button id="btn-return" class="hud-btn" title="Carriage Return (Enter)">CR / LF ↵</button>
-      <button id="btn-print" class="hud-btn" title="Print or save the typed page exactly as it looks">PRINT / SAVE</button>
       <button id="btn-mute" class="hud-btn active" title="Toggle Synthesized Mechanical Audio">AUDIO: ON</button>
     </div>
   </header>
 
-  <div id="mobile-bar">
-    <button id="btn-kb-m" class="hud-btn">KEYBOARD</button>
-    <button id="btn-print-m" class="hud-btn">PRINT / SAVE</button>
+  <!-- PRINT / SAVE Export Modal Panel -->
+  <div id="print-save-panel" class="export-panel hidden" role="dialog" aria-label="Print or Save Page">
+    <div class="export-panel-header">
+      <span>EXPORT TYPED SHEET</span>
+      <button id="btn-export-close" class="export-close-btn" title="Close (Escape)">✕</button>
+    </div>
+    <div class="export-panel-body">
+      <button id="btn-export-png" class="export-action-btn">Download PNG</button>
+      <button id="btn-export-pdf" class="export-action-btn">Download PDF</button>
+      <button id="btn-export-print" class="export-action-btn">Print Page</button>
+    </div>
   </div>
 
-  <button id="btn-kb-big" type="button">OPEN KEYBOARD</button>
-
-  <div id="print-menu">
-    <div class="pm-title">PRINT / SAVE PAGE</div>
-    <button id="pm-png" class="hud-btn">SAVE PNG</button>
-    <button id="pm-pdf" class="hud-btn">SAVE PDF</button>
-    <button id="pm-print" class="hud-btn">PRINT</button>
-  </div>
-
-  <!-- Full-screen SVG Telemetry HUD (Corner-anchored, never covers keys) -->
+  <!-- Full-screen SVG Telemetry HUD -->
   <svg id="hud-overlay" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <filter id="dot-bloom" x="-150%" y="-150%" width="400%" height="400%">
@@ -65,7 +64,6 @@
 
     <g id="hud-corners"></g>
 
-    <!-- Leader Lines & Glowing Target Anchor Dots -->
     <g id="hud-leaders">
       <polyline id="leader-carriage" class="leader-line" points="0,0 0,0 0,0" />
       <circle id="dot-carriage" class="leader-dot" cx="0" cy="0" r="3" filter="url(#dot-bloom)" />
@@ -80,9 +78,7 @@
       <circle id="dot-ribbon" class="leader-dot" cx="0" cy="0" r="3" filter="url(#dot-bloom)" />
     </g>
 
-    <!-- Compact Corner-Anchored Telemetry Cards -->
     <g id="hud-cards-group">
-      <!-- 1. Carriage & Bell Card (Top Left Corner) -->
       <g id="card-carriage" transform="translate(14, 44)">
         <rect id="box-carriage" class="hud-box" x="0" y="0" width="148" height="52" rx="2" />
         <text class="hud-title" x="8" y="13">CARRIAGE POS</text>
@@ -90,15 +86,13 @@
         <text id="hud-val-bell" class="hud-sub" x="8" y="43">BELL IN: 38 CHARS</text>
       </g>
 
-      <!-- 2. Platen & Line Feed Card (Top Right Corner) -->
       <g id="card-platen" transform="translate(14, 104)">
         <rect class="hud-box" x="0" y="0" width="148" height="52" rx="2" />
         <text class="hud-title" x="8" y="13">PLATEN // PAGE</text>
-        <text id="hud-val-line" class="hud-value" x="8" y="28">LINE 01 / 28</text>
+        <text id="hud-val-line" class="hud-value" x="8" y="28">LINE 01 / 25</text>
         <text id="hud-val-case" class="hud-sub" x="8" y="43">BASKET: LOWER</text>
       </g>
 
-      <!-- 3. Typebasket & Strike Interval Sparkline (Bottom Left Corner) -->
       <g id="card-basket" transform="translate(14, 174)">
         <rect class="hud-box" x="0" y="0" width="148" height="70" rx="2" />
         <text class="hud-title" x="8" y="13">TYPEBASKET</text>
@@ -107,7 +101,6 @@
         <polyline id="hud-sparkline" fill="none" stroke="#72d6c9" stroke-width="1.3" points="8,62 140,62" />
       </g>
 
-      <!-- 4. Ribbon & Ink Telemetry (Bottom Right Corner) -->
       <g id="card-ribbon" transform="translate(14, 254)">
         <rect class="hud-box" x="0" y="0" width="148" height="52" rx="2" />
         <text class="hud-title" x="8" y="13">BICHROME RIBBON</text>
@@ -117,23 +110,30 @@
     </g>
   </svg>
 
+  <!-- Mobile Portrait Action Bar & Prominent Keyboard Trigger -->
+  <button id="btn-kb-big" class="mobile-kb-cta" type="button">OPEN KEYBOARD ⌨</button>
+
   <!-- Compact One-Line Readout for Small / Portrait Screens -->
   <div id="compact-telemetry">
     <span id="compact-col">POS: 0.0mm</span>
-    <span id="compact-line">LN: 01/28</span>
+    <span id="compact-line">LN: 01/25</span>
     <span id="compact-key">KEY: -</span>
-    <span id="compact-strikes">STR: 0</span>
     <span id="compact-bell">BELL: 38</span>
+    <div class="compact-actions">
+      <button id="btn-kb-m" class="hud-btn" type="button">KB</button>
+      <button id="btn-sheet-m" class="hud-btn" type="button">SHEET</button>
+      <button id="btn-print-save-m" class="hud-btn" type="button">SAVE</button>
+    </div>
   </div>
 
   <!-- Center Intro Prompt -->
   <div id="intro-prompt">
-    <div class="prompt-pill">TYPE ON YOUR KEYBOARD</div>
-    <div class="prompt-sub">CLICK KEYS · [ENTER] CARRIAGE RETURN · [TAB] RED/BLACK RIBBON</div>
+    <div class="prompt-pill">TAP KEYS, DRAG LEVERS &amp; KNOBS, OR TYPE</div>
+    <div class="prompt-sub">DRAG RETURN LEVER · TURN KNOBS · SLIDE MARGIN STOPS · TAP PAPER TO EJECT</div>
   </div>
 
   <!-- Hidden input for mobile virtual keyboard support -->
-  <input id="mobile-input" type="text" inputmode="text" enterkeyhint="enter" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+  <input id="mobile-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
 
   <script type="module" src="./src/main.js"></script>
 </body>
