@@ -3,8 +3,9 @@ import { CONFIG } from './config.js';
 
 /**
  * Builds a ribbed matte grey-white plastic Olivetti Lettera 32 platen knob
+ * with dark radial index marks & an eccentric release button so rotation is clearly visible on each line feed.
  */
-function createRibbedKnob(knobPlasticMat, chromeMat, sideSign = 1) {
+function createRibbedKnob(knobPlasticMat, chromeMat, darkSteelMat, sideSign = 1) {
   const group = new THREE.Group();
 
   const mainCyl = new THREE.Mesh(
@@ -19,8 +20,10 @@ function createRibbedKnob(knobPlasticMat, chromeMat, sideSign = 1) {
   const numRibs = 18;
   for (let i = 0; i < numRibs; i++) {
     const angle = (i / numRibs) * Math.PI * 2;
-    const rib = new THREE.Mesh(ribGeo, knobPlasticMat);
-    rib.position.set(0, Math.cos(angle) * 0.395, Math.sin(angle) * 0.395);
+    // Every 6th rib is darker steel-grey so knob rotation is unmistakably visible
+    const mat = i % 6 === 0 ? darkSteelMat : knobPlasticMat;
+    const rib = new THREE.Mesh(ribGeo, mat);
+    rib.position.set(0, Math.cos(angle) * 0.398, Math.sin(angle) * 0.398);
     rib.rotation.x = -angle;
     group.add(rib);
   }
@@ -33,15 +36,18 @@ function createRibbedKnob(knobPlasticMat, chromeMat, sideSign = 1) {
   cap.position.x = sideSign * 0.22;
   group.add(cap);
 
+  // Off-center indicator pin on the knob face so rotation reads from any angle
+  const indexPin = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.045, 0.045, 0.05, 12),
+    darkSteelMat
+  );
+  indexPin.rotation.z = Math.PI / 2;
+  indexPin.position.set(sideSign * 0.23, 0.12, 0.08);
+  group.add(indexPin);
+
   return group;
 }
 
-/**
- * Builds the Olivetti Lettera 32 Carriage assembly:
- * - On desktop/landscape: full 46-column carriage travel (`0.185` world units/col)
- * - On portrait phones: keeps carriage centered within a compact travel range so the machine
- *   can fill ~96% of the phone screen width while keeping both ribbed knobs visible!
- */
 export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   const { enamelBodyMat, darkSteelMat, chromeMat, rubberMat, knobPlasticMat } = materials;
 
@@ -57,9 +63,7 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     const isPortrait = (window.innerWidth / Math.max(1, window.innerHeight)) < 0.92;
     const centerCol = (CONFIG.maxCols - 1) * 0.5; // 22.5
     if (isPortrait) {
-      // On portrait phones, center carriage around the middle of the first words (col 10)
-      // with a gentler travel step so both knobs stay inside the 96%-width portrait frame
-      return THREE.MathUtils.clamp((10 - col) * 0.035, -0.45, 0.35);
+      return THREE.MathUtils.clamp((10 - col) * 0.028, -0.32, 0.28);
     }
     return (centerCol - col) * CONFIG.charStepWorld;
   }
@@ -94,11 +98,11 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   const axleMesh = new THREE.Mesh(axleGeo, chromeMat);
   platenRollerGroup.add(axleMesh);
 
-  const leftKnob = createRibbedKnob(knobPlasticMat, chromeMat, -1);
+  const leftKnob = createRibbedKnob(knobPlasticMat, chromeMat, darkSteelMat, -1);
   leftKnob.position.x = -CONFIG.platenLength * 0.5 - 0.82;
   platenRollerGroup.add(leftKnob);
 
-  const rightKnob = createRibbedKnob(knobPlasticMat, chromeMat, 1);
+  const rightKnob = createRibbedKnob(knobPlasticMat, chromeMat, darkSteelMat, 1);
   rightKnob.position.x = CONFIG.platenLength * 0.5 + 0.82;
   platenRollerGroup.add(rightKnob);
 
@@ -188,8 +192,8 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     velX: 0,
     platenTargetRotX: 0,
     platenCurrentRotX: 0,
+    platenRotVelX: 0,
     platenRecoilZ: 0,
-    platenWobble: 0,
     returnLeverSwing: 0
   };
 
@@ -205,9 +209,10 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   function triggerCarriageReturnMotion(startCol = 0) {
     state.targetX = computeCarriageXForCol(startCol);
     state.velX += 1.50;
-    state.returnLeverSwing = 0.54;
-    state.platenTargetRotX -= 0.40;
-    state.platenWobble = 0.055;
+    state.returnLeverSwing = 0.56;
+    // Rotate platen and both ribbed knobs by ~35 degrees with ratchet spring overshoot
+    state.platenTargetRotX -= 0.62;
+    state.platenRotVelX -= 2.4;
   }
 
   function updateCarriage(dt) {
@@ -217,9 +222,11 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     state.velX = (state.velX + forceX * dt) * Math.exp(-damping * dt);
     carriageGroup.position.x += state.velX * dt;
 
-    state.platenCurrentRotX += (state.platenTargetRotX - state.platenCurrentRotX) * Math.min(1.0, dt * 15.0);
-    state.platenWobble *= Math.exp(-dt * 12.0);
-    platenRollerGroup.rotation.x = state.platenCurrentRotX + Math.sin(performance.now() * 0.05) * state.platenWobble;
+    // Spring-damper platen & knob rotation so the ribbed knobs visibly turn and ratchet on each line feed
+    const rotForce = (state.platenTargetRotX - state.platenCurrentRotX) * 180.0;
+    state.platenRotVelX = (state.platenRotVelX + rotForce * dt) * Math.exp(-13.5 * dt);
+    state.platenCurrentRotX += state.platenRotVelX * dt;
+    platenRollerGroup.rotation.x = state.platenCurrentRotX;
 
     state.platenRecoilZ += (0.0 - state.platenRecoilZ) * Math.min(1.0, dt * 28.0);
     platenRollerGroup.position.z = state.platenRecoilZ;
