@@ -1,45 +1,45 @@
 import * as THREE from 'three';
 
 export const CONFIG = {
-  // Typing & Page Layout
-  maxCols: 62,
+  // Typing & Page Layout (~46 large legible columns across the hero paper sheet)
+  maxCols: 46,
   maxLinesPerPage: 28,
-  bellOffset: 8,            // Bell rings at col 54 (8 chars before right margin)
-  charStepWorld: 0.145,     // World units carriage translates LEFT per character
-  lineStepWorld: 0.24,      // World units paper rolls UP per line feed
+  bellOffset: 8,            // Bell rings at col 38 (8 chars before right margin)
+  charStepWorld: 0.195,     // World units carriage translates LEFT per character
+  lineStepWorld: 0.30,      // World units paper rolls UP per line feed
 
   // Platen & Paper Dimensions
   platenRadius: 0.62,
   platenLength: 10.6,
-  paperWidth: 9.7,          // 62 cols * 0.145 = 8.99 world units + clean margins
-  paperSheetHeight: 4.5,    // Visible height of the paper rising above platen
+  paperWidth: 9.8,          // 46 cols * 0.195 = 8.97 world units + clean left/right margins
+  paperSheetHeight: 5.4,    // Tall hero paper sheet rising prominently above the platen
 
   // High-Resolution Paper CanvasTexture (2048 x 2048)
   paperCanvasW: 2048,
   paperCanvasH: 2048,
   // Exact 1:1 horizontal alignment between world carriage step and canvas pixel step:
-  // (charStepWorld / paperWidth) * paperCanvasW = 30.614433 px per character column
-  paperCharPxX: (0.145 / 9.7) * 2048,
-  paperLinePxY: 56,
-  // Column 0 local X on paper is -30.5 * 0.145 = -4.4225 world units from paper center.
-  // Mapped to canvas X pixels: (0.5 - 4.4225 / 9.7) * 2048 = 114.15 px
-  paperCol0PxX: (0.5 - (30.5 * 0.145) / 9.7) * 2048,
-  // Active typing line sits near the bottom of the visible canvas window (above platen printing point)
-  paperActiveLineCanvasY: 1840,
+  // (charStepWorld / paperWidth) * paperCanvasW = (0.195 / 9.8) * 2048 = 40.75102 px per column
+  paperCharPxX: (0.195 / 9.8) * 2048,
+  paperLinePxY: 74,         // Generous line spacing so 11-12 lines are clearly readable above platen
+  // Column 0 local X on paper is -22.5 * 0.195 = -4.3875 world units from paper center.
+  // Mapped to canvas X pixels: (0.5 - 4.3875 / 9.8) * 2048 = 109.29 px
+  paperCol0PxX: (0.5 - (22.5 * 0.195) / 9.8) * 2048,
+  // Active typing line baseline on the 2048px canvas
+  paperActiveLineCanvasY: 1850,
 
   // Printing Point in World Coordinates (center of typebasket & ribbon vibrator)
   strikePoint: new THREE.Vector3(0, 3.18, -0.58),
   typebarRadius: 1.48,
 
   // Typebar Kinematics Timings (seconds)
-  barAnticipationTime: 0.014,
-  barSwingUpTime: 0.056,
-  barImpactHoldTime: 0.062, // 62ms freeze at strike point so screenshots & eyes catch the bar clearly
-  barReboundTime: 0.095,
+  barAnticipationTime: 0.015,
+  barSwingUpTime: 0.055,
+  barImpactHoldTime: 0.085, // 85ms hold at platen so still frames & eyes unmistakably catch the bar + flash
+  barReboundTime: 0.145,    // Slightly slower return with platen rebound
 
-  // Full Machine Bounding Box (includes paper top, platen knobs, 4 key rows, spacebar & front chin)
-  machineBoundsMin: new THREE.Vector3(-6.75, 0.0, -3.45),
-  machineBoundsMax: new THREE.Vector3( 6.75, 6.85,  5.35)
+  // Full Machine Bounding Box (including carriage travel, platen knobs, full paper height, and spacebar)
+  machineBoundsMin: new THREE.Vector3(-6.85, 0.0, -3.50),
+  machineBoundsMax: new THREE.Vector3( 6.85, 8.20,  5.25)
 };
 
 // 44-key classic desktop manual typewriter layout (4 rows)
