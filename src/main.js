@@ -46,12 +46,10 @@ const paperSys = createPaperSystem(carriageSys.carriageGroup);
 const hudSys = createHudSystem(camera, carriageSys.carriageGroup);
 const exportSys = createExportSystem(paperSys);
 
-// Expose export system on window.typewriter for programmatic inspection
 window.typewriter = {
   export: exportSys
 };
 
-// User-adjustable margin stop columns (draggable via the 3D margin stops on the scale rail)
 const userMargins = {
   leftCol: 0,
   rightCol: CONFIG.maxCols
@@ -77,12 +75,13 @@ carriageSys.setMarginStopPositions(userMargins.leftCol, userMargins.rightCol);
 // 8. Live Telemetry & Mechanical State
 const telemetry = {
   col: initialBounds.minCol,
+  fractionalCol: initialBounds.minCol,
   pageLine: 0,
   totalLinesTyped: 0,
   strikes: 0,
   lastKeyLabel: '[NONE]',
   shiftDown: false,
-  shiftLockedNext: false, // Tapping 3D Shift key toggles shift lock for next char
+  shiftLockedNext: false,
   paperReleased: false,
   marginLocked: false,
   ribbonColor: 'black',   // 'black' | 'red' | 'stencil'
@@ -96,6 +95,8 @@ const telemetry = {
   strikeIntervals: [175, 160, 185, 150, 170, 155, 145, 165, 150, 160],
   introDismissed: false
 };
+
+let lastPlatenTickLine = 0;
 
 carriageSys.advanceToCol(telemetry.col, 0);
 
@@ -167,6 +168,7 @@ function handlePrintableKey(ctrl, explicitChar = null) {
   chassis.spoolGroupRight.rotation.y = telemetry.spoolAngle;
 
   telemetry.col = Math.min(bounds.maxCol, telemetry.col + 1);
+  telemetry.fractionalCol = telemetry.col;
   carriageSys.advanceToCol(telemetry.col, -0.42);
 
   if (telemetry.col === bounds.maxCol - CONFIG.bellOffset) {
@@ -206,6 +208,7 @@ function handleSpace() {
   }
 
   telemetry.col++;
+  telemetry.fractionalCol = telemetry.col;
   carriageSys.advanceToCol(telemetry.col, -0.34);
   sound.playCarriageAdvanceClick(0.02);
 
@@ -230,6 +233,7 @@ function handleBackspace() {
 
   if (telemetry.col > bounds.minCol) {
     telemetry.col--;
+    telemetry.fractionalCol = telemetry.col;
     telemetry.marginLocked = false;
     carriageSys.advanceToCol(telemetry.col, 0.34);
     sound.playCarriageAdvanceClick(0.02);
@@ -249,6 +253,7 @@ function handleCarriageReturn() {
   sound.playCarriageReturn(distanceRatio);
 
   telemetry.col = bounds.minCol;
+  telemetry.fractionalCol = bounds.minCol;
   telemetry.marginLocked = false;
   telemetry.totalLinesTyped++;
 
@@ -257,16 +262,19 @@ function handleCarriageReturn() {
   if (!paperSys.isSheetPresent()) {
     paperSys.triggerNewSheetInsert();
     telemetry.pageLine = 0;
+    lastPlatenTickLine = 0;
     return;
   }
 
   telemetry.pageLine++;
   if (telemetry.pageLine >= CONFIG.maxLinesPerPage) {
     telemetry.pageLine = 0;
+    lastPlatenTickLine = 0;
     paperSys.triggerNewSheetInsert();
   } else {
     paperSys.rollCanvasTextUpOneLine();
     paperSys.triggerLineFeedWave();
+    lastPlatenTickLine = telemetry.pageLine;
   }
 }
 
@@ -320,18 +328,81 @@ function handleCycleRibbonMode() {
   }
 }
 
-function handlePlatenLineFeed(deltaLines, snapToLine = true) {
+/**
+ * Continuous or stepped platen knob / roller line feed
+ */
+function handlePlatenLineFeed(deltaLines, snapToLine = false) {
   sound.init();
   dismissIntroPrompt();
-  carriageSys.rotatePlatenByLines(deltaLines);
-  if (snapToLine) {
-    sound.playCarriageAdvanceClick(0.0);
-  }
+  carriageSys.rotatePlatenByLines(deltaLines, !snapToLine);
+
   if (paperSys.isSheetPresent()) {
     const newLine = paperSys.scrollByLines(deltaLines, snapToLine);
-    telemetry.pageLine = Math.max(0, Math.min(CONFIG.maxLinesPerPage - 1, newLine));
+    const rounded = Math.round(newLine);
+    if (rounded !== lastPlatenTickLine) {
+      lastPlatenTickLine = rounded;
+      if (!telemetry.paperReleased || snapToLine) {
+        sound.playCarriageAdvanceClick(0.0);
+      }
+    }
+    telemetry.pageLine = Math.max(0, Math.min(CONFIG.maxLinesPerPage - 1, rounded));
+  } else if (snapToLine) {
+    sound.playCarriageAdvanceClick(0.0);
   }
-  telemetry.lastKeyLabel = deltaLines > 0 ? 'KNOB UP' : 'KNOB DN';
+  telemetry.lastKeyLabel = deltaLines >= 0 ? 'ROLL UP' : 'ROLL DN';
+}
+
+/**
+ * Eases platen & paper to the nearest integer line on pointer release with a ratchet click
+ */
+function handlePlatenSnapLine() {
+  if (!paperSys.isSheetPresent()) return;
+  const snappedLine = paperSys.snapToNearestLine();
+  telemetry.pageLine = Math.max(0, Math.min(CONFIG.maxLinesPerPage - 1, snappedLine));
+  lastPlatenTickLine = telemetry.pageLine;
+  sound.playCarriageAdvanceClick(0.0);
+}
+
+/**
+ * Continuous horizontal carriage slide by dragging the paper or carriage body left/right
+ */
+function handleCarriageSlideContinuous(pixelDx) {
+  sound.init();
+  dismissIntroPrompt();
+  const bounds = getActiveColumnBounds();
+  // Dragging carriage RIGHT (pixelDx > 0) decreases column index; dragging LEFT increases column index
+  const colDelta = -pixelDx / 14.0;
+  telemetry.fractionalCol = THREE.MathUtils.clamp(
+    telemetry.fractionalCol + colDelta,
+    bounds.minCol,
+    bounds.maxCol
+  );
+  const newRoundedCol = Math.round(telemetry.fractionalCol);
+
+  if (newRoundedCol !== telemetry.col) {
+    telemetry.col = newRoundedCol;
+    sound.playCarriageAdvanceClick(0.0);
+    if (telemetry.col === bounds.maxCol - CONFIG.bellOffset) {
+      sound.playMarginBell();
+      hudSys.triggerBellFlash();
+    }
+  }
+
+  telemetry.marginLocked = telemetry.col >= bounds.maxCol;
+  carriageSys.setCarriageColContinuous(telemetry.fractionalCol);
+  telemetry.lastKeyLabel = `COL ${telemetry.col + 1}`;
+}
+
+/**
+ * Snaps carriage to the nearest column on pointer release
+ */
+function handleCarriageSlideSnap() {
+  const bounds = getActiveColumnBounds();
+  telemetry.col = THREE.MathUtils.clamp(Math.round(telemetry.fractionalCol), bounds.minCol, bounds.maxCol);
+  telemetry.fractionalCol = telemetry.col;
+  telemetry.marginLocked = telemetry.col >= bounds.maxCol;
+  carriageSys.advanceToCol(telemetry.col, 0);
+  sound.playCarriageAdvanceClick(0.0);
 }
 
 function handleUpdateMargins(side, targetCol) {
@@ -346,9 +417,11 @@ function handleUpdateMargins(side, targetCol) {
   const bounds = getActiveColumnBounds();
   if (telemetry.col < bounds.minCol) {
     telemetry.col = bounds.minCol;
+    telemetry.fractionalCol = bounds.minCol;
     carriageSys.advanceToCol(telemetry.col, 0.15);
   } else if (telemetry.col > bounds.maxCol) {
     telemetry.col = bounds.maxCol;
+    telemetry.fractionalCol = bounds.maxCol;
     telemetry.marginLocked = true;
     carriageSys.advanceToCol(telemetry.col, -0.15);
   } else {
@@ -371,18 +444,21 @@ function handleRemoveOrInsertPaper(mode = 'toggle') {
   dismissIntroPrompt();
   const bounds = getActiveColumnBounds();
 
-  if (mode === 'insert' || !paperSys.isSheetPresent()) {
+  if (mode === 'insert' || (mode === 'toggle' && !paperSys.isSheetPresent())) {
     sound.playCarriageReturn(0.5);
     telemetry.col = bounds.minCol;
+    telemetry.fractionalCol = bounds.minCol;
     telemetry.pageLine = 0;
+    lastPlatenTickLine = 0;
     telemetry.marginLocked = false;
     carriageSys.triggerCarriageReturnMotion(bounds.minCol);
     paperSys.triggerNewSheetInsert();
     telemetry.lastKeyLabel = 'SHEET IN';
-  } else {
-    sound.playCarriageReturn(0.35);
-    paperSys.triggerPaperEject();
-    telemetry.lastKeyLabel = 'SHEET OUT';
+  } else if (mode === 'eject' || mode === 'toggle') {
+    if (paperSys.triggerPaperEject()) {
+      sound.playCarriageReturn(0.35);
+      telemetry.lastKeyLabel = 'SHEET OUT';
+    }
   }
 }
 
@@ -461,6 +537,9 @@ createControlsSystem({
   onShiftToggleLock: handleShiftToggleLock,
   onCycleRibbonMode: handleCycleRibbonMode,
   onPlatenLineFeed: handlePlatenLineFeed,
+  onPlatenSnapLine: handlePlatenSnapLine,
+  onCarriageSlideContinuous: handleCarriageSlideContinuous,
+  onCarriageSlideSnap: handleCarriageSlideSnap,
   onUpdateMargins: handleUpdateMargins,
   onTogglePaperRelease: handleTogglePaperRelease,
   onRemoveOrInsertPaper: handleRemoveOrInsertPaper,
@@ -487,9 +566,11 @@ window.addEventListener('resize', () => {
   const b = getActiveColumnBounds();
   if (telemetry.col < b.minCol) {
     telemetry.col = b.minCol;
+    telemetry.fractionalCol = b.minCol;
     carriageSys.advanceToCol(telemetry.col, 0);
   } else if (telemetry.col > b.maxCol) {
     telemetry.col = b.maxCol;
+    telemetry.fractionalCol = b.maxCol;
     carriageSys.advanceToCol(telemetry.col, 0);
   }
 });
