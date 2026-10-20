@@ -2,35 +2,52 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { PAPER_VERTEX_SHADER, PAPER_FRAGMENT_SHADER } from './shaders/paper.js';
 
+const LINE0_Y = CONFIG.LINE0_Y || 250;
+const MAX_LINE = CONFIG.MAX_LINE || 24;
+
 export function createPaperSystem(carriageGroup) {
   const paperCanvas = document.createElement('canvas');
   paperCanvas.width = CONFIG.paperCanvasW;
   paperCanvas.height = CONFIG.paperCanvasH;
   const paperCtx = paperCanvas.getContext('2d');
 
+  // Snapshot canvas preserves the last completed/removed sheet so PRINT / SAVE still works after ejecting a sheet!
+  const lastArchivedCanvas = document.createElement('canvas');
+  lastArchivedCanvas.width = CONFIG.paperCanvasW;
+  lastArchivedCanvas.height = CONFIG.paperCanvasH;
+  const lastArchivedCtx = lastArchivedCanvas.getContext('2d');
+  let hasArchivedSheet = false;
+  let currentSheetHasInk = false;
+
   const strikeGrid = new Map();
 
-  // Page reads top to bottom: line n sits LOWER on the canvas than line n-1.
-  // Carriage return rolls the paper UP, so earlier lines move up and the new line is below them.
-  const LINE0_Y = 250;
-  const MAX_LINE = Math.floor((1990 - LINE0_Y) / CONFIG.paperLinePxY);
-  const V_PRINT = 0.0967; // texture v the shader shows at the strike line when scroll is 0
-  const vOfLine = (n) => 1.0 - (LINE0_Y + n * CONFIG.paperLinePxY) / CONFIG.paperCanvasH;
-  const scrollForLine = (n) => vOfLine(n) - V_PRINT;
-
   let currentCanvasLine = 0;
-  let scrollVCurrent = scrollForLine(0);
-  let scrollVTarget = scrollForLine(0);
+  let scrollVCurrent = 0.0;
+  let scrollVTarget = 0.0;
   let scrollVVel = 0.0;
 
+  // Sheet presence state: 'seated' | 'inserting' | 'ejecting' | 'removed'
+  let sheetStatus = 'inserting';
+  let insertAnimProgress = 0.0;
+
+  function archiveCurrentCanvasIfInked() {
+    if (currentSheetHasInk) {
+      lastArchivedCtx.clearRect(0, 0, lastArchivedCanvas.width, lastArchivedCanvas.height);
+      lastArchivedCtx.drawImage(paperCanvas, 0, 0);
+      hasArchivedSheet = true;
+    }
+  }
+
   function clearPaperCanvas() {
+    archiveCurrentCanvasIfInked();
     paperCtx.fillStyle = '#000000';
     paperCtx.fillRect(0, 0, paperCanvas.width, paperCanvas.height);
     strikeGrid.clear();
     currentCanvasLine = 0;
-    scrollVCurrent = scrollForLine(0);
-    scrollVTarget = scrollForLine(0);
+    scrollVCurrent = 0.0;
+    scrollVTarget = 0.0;
     scrollVVel = 0.0;
+    currentSheetHasInk = false;
   }
   clearPaperCanvas();
 
@@ -47,10 +64,13 @@ export function createPaperSystem(carriageGroup) {
   }
 
   /**
-   * Stamps a typewriter glyph onto the 2048x2048 CanvasTexture,
-   * complete with ribbon ink halo, heavier core, and 3-6 tiny ink spatter specks around the letter.
+   * Stamps a typewriter glyph onto the 2048x2048 CanvasTexture:
+   * Line 0 is drawn near the top of the texture (LINE0_Y = 250px) and subsequent lines
+   * advance DOWNWARD (+paperLinePxY per line) so the page reads top-to-bottom in typing order!
    */
   function stampCharacter(char, col, _unusedOffset = 0, ribbonColor = 'black', absoluteLineId = 0) {
+    if (sheetStatus === 'removed' || sheetStatus === 'ejecting') return;
+
     const key = `${absoluteLineId}:${col}`;
     const prevStrikes = strikeGrid.get(key) || 0;
     strikeGrid.set(key, prevStrikes + 1);
@@ -66,6 +86,7 @@ export function createPaperSystem(carriageGroup) {
       fontSizePx = 76;
     }
 
+    // Top-to-bottom line order: line 0 at LINE0_Y (250), line n at LINE0_Y + n * paperLinePxY
     const baselineY = LINE0_Y + currentCanvasLine * CONFIG.paperLinePxY;
 
     const jitterX = (Math.random() - 0.5) * 2.0;
@@ -73,6 +94,7 @@ export function createPaperSystem(carriageGroup) {
     const rotJitter = (Math.random() - 0.5) * 0.032;
     const baseDensity = Math.min(255, Math.floor(228 + Math.random() * 27 + prevStrikes * 35));
 
+    // Support 'black', 'red', and 'stencil' (blind letterpress deboss with zero ink)
     const rVal = ribbonColor === 'black' ? baseDensity : 0;
     const gVal = ribbonColor === 'red'   ? baseDensity : 0;
     const bVal = baseDensity;
@@ -86,13 +108,11 @@ export function createPaperSystem(carriageGroup) {
     paperCtx.textAlign = 'center';
     paperCtx.textBaseline = 'alphabetic';
 
-    // 1. Lighter ink-bleed halo around glyph
     paperCtx.shadowColor = `rgb(${Math.floor(rVal * 0.65)}, ${Math.floor(gVal * 0.65)}, ${Math.floor(bVal * 0.72)})`;
     paperCtx.shadowBlur = 4.5;
     paperCtx.fillStyle = `rgb(${Math.floor(rVal * 0.85)}, ${Math.floor(gVal * 0.85)}, ${Math.floor(bVal * 0.85)})`;
     paperCtx.fillText(char, 0, 0);
 
-    // 2. Darker, heavier ink core
     paperCtx.shadowBlur = 0;
     paperCtx.fillStyle = `rgb(${rVal}, ${gVal}, ${bVal})`;
     paperCtx.fillText(char, 0, 0);
@@ -100,30 +120,35 @@ export function createPaperSystem(carriageGroup) {
     paperCtx.strokeStyle = `rgb(${rVal}, ${gVal}, ${bVal})`;
     paperCtx.strokeText(char, (Math.random() - 0.5) * 0.7, (Math.random() - 0.5) * 0.7);
 
-    // 3. A few tiny microscopic ink specks / ribbon spatter dots near the struck letter
-    const speckCount = 3 + Math.floor(Math.random() * 4);
-    for (let s = 0; s < speckCount; s++) {
-      const sx = (Math.random() - 0.5) * (fontSizePx * 0.78);
-      const sy = -fontSizePx * 0.35 + (Math.random() - 0.5) * (fontSizePx * 0.82);
-      const sRad = 0.8 + Math.random() * 1.4;
-      const sIntensity = Math.floor(baseDensity * (0.45 + Math.random() * 0.45));
-      const sr = ribbonColor === 'black' ? sIntensity : 0;
-      const sg = ribbonColor === 'red'   ? sIntensity : 0;
-      paperCtx.fillStyle = `rgb(${sr}, ${sg}, ${sIntensity})`;
-      paperCtx.beginPath();
-      paperCtx.arc(sx, sy, sRad, 0, Math.PI * 2);
-      paperCtx.fill();
+    if (ribbonColor !== 'stencil') {
+      const speckCount = 3 + Math.floor(Math.random() * 4);
+      for (let s = 0; s < speckCount; s++) {
+        const sx = (Math.random() - 0.5) * (fontSizePx * 0.78);
+        const sy = -fontSizePx * 0.35 + (Math.random() - 0.5) * (fontSizePx * 0.82);
+        const sRad = 0.8 + Math.random() * 1.4;
+        const sIntensity = Math.floor(baseDensity * (0.45 + Math.random() * 0.45));
+        const sr = ribbonColor === 'black' ? sIntensity : 0;
+        const sg = ribbonColor === 'red'   ? sIntensity : 0;
+        paperCtx.fillStyle = `rgb(${sr}, ${sg}, ${sIntensity})`;
+        paperCtx.beginPath();
+        paperCtx.arc(sx, sy, sRad, 0, Math.PI * 2);
+        paperCtx.fill();
+      }
     }
 
     paperCtx.restore();
+    currentSheetHasInk = true;
     paperTexture.needsUpdate = true;
   }
 
+  /**
+   * Advances line index downward on the page and scrolls paper UP around the platen
+   * (negative scrollV per line) so earlier lines move UP above the strike line.
+   */
   function rollCanvasTextUpOneLine() {
     const lineStepV = CONFIG.paperLinePxY / CONFIG.paperCanvasH;
 
     if (currentCanvasLine >= MAX_LINE) {
-      // Page is full on the canvas: slide the written text up, keep striking at the bottom line.
       const dy = CONFIG.paperLinePxY;
       const w = paperCanvas.width;
       const h = paperCanvas.height;
@@ -132,13 +157,28 @@ export function createPaperSystem(carriageGroup) {
       paperCtx.fillRect(0, 0, w, h);
       paperCtx.putImageData(imageData, 0, 0);
       paperTexture.needsUpdate = true;
-      scrollVCurrent += lineStepV; // content jumped up one line; spring eases the view back
+      scrollVCurrent += lineStepV;
     } else {
       currentCanvasLine++;
     }
 
-    scrollVTarget = scrollForLine(currentCanvasLine);
+    // Negative scroll moves Texture V down to the new line and shifts earlier lines UP the physical sheet!
+    scrollVTarget = -currentCanvasLine * lineStepV;
     scrollVVel -= lineStepV * 4.8;
+  }
+
+  /**
+   * Supports turning the platen knobs or dragging released paper up/down by fractional or integer lines
+   */
+  function scrollByLines(deltaLines, snapToLine = true) {
+    const lineStepV = CONFIG.paperLinePxY / CONFIG.paperCanvasH;
+    currentCanvasLine = THREE.MathUtils.clamp(currentCanvasLine + deltaLines, 0, MAX_LINE);
+    if (snapToLine) {
+      currentCanvasLine = Math.round(currentCanvasLine);
+    }
+    scrollVTarget = -currentCanvasLine * lineStepV;
+    paperUniforms.uFeedWave.value = Math.min(1.0, Math.abs(deltaLines) * 0.65);
+    return currentCanvasLine;
   }
 
   const paperUniforms = {
@@ -206,13 +246,28 @@ export function createPaperSystem(carriageGroup) {
   paperMesh.receiveShadow = true;
   carriageGroup.add(paperMesh);
 
-  let insertAnimProgress = 0.0;
-
   function triggerNewSheetInsert() {
     clearPaperCanvas();
+    sheetStatus = 'inserting';
     insertAnimProgress = 0.0;
+    paperMesh.visible = true;
     paperUniforms.uFeedWave.value = 1.2;
     paperUniforms.uScrollV.value = 0.0;
+  }
+
+  function triggerPaperEject() {
+    if (sheetStatus === 'removed' || sheetStatus === 'ejecting') return false;
+    archiveCurrentCanvasIfInked();
+    sheetStatus = 'ejecting';
+    insertAnimProgress = 1.0;
+    paperUniforms.uFeedWave.value = 1.3;
+    return true;
+  }
+
+  function getExportSourceCanvas() {
+    if (currentSheetHasInk) return paperCanvas;
+    if (hasArchivedSheet) return lastArchivedCanvas;
+    return paperCanvas;
   }
 
   function triggerLineFeedWave() {
@@ -222,10 +277,20 @@ export function createPaperSystem(carriageGroup) {
   function updatePaper(dt, elapsedTotal) {
     paperUniforms.uTime.value = elapsedTotal;
 
-    if (insertAnimProgress < 1.0) {
-      insertAnimProgress = Math.min(1.0, insertAnimProgress + dt * 1.35);
+    if (sheetStatus === 'inserting') {
+      insertAnimProgress = Math.min(1.0, insertAnimProgress + dt * 1.45);
       const eased = 1.0 - Math.pow(1.0 - insertAnimProgress, 3.0);
       paperUniforms.uInsertProgress.value = eased;
+      if (insertAnimProgress >= 1.0) {
+        sheetStatus = 'seated';
+      }
+    } else if (sheetStatus === 'ejecting') {
+      insertAnimProgress += dt * 2.2;
+      paperUniforms.uInsertProgress.value = insertAnimProgress;
+      if (insertAnimProgress >= 2.2) {
+        sheetStatus = 'removed';
+        paperMesh.visible = false;
+      }
     }
 
     const stiffness = 175.0;
@@ -244,7 +309,13 @@ export function createPaperSystem(carriageGroup) {
     paperUniforms,
     stampCharacter,
     rollCanvasTextUpOneLine,
+    scrollByLines,
     triggerNewSheetInsert,
+    triggerPaperEject,
+    getExportSourceCanvas,
+    isSheetPresent: () => sheetStatus === 'seated' || sheetStatus === 'inserting',
+    getSheetStatus: () => sheetStatus,
+    getCurrentLine: () => Math.round(currentCanvasLine),
     triggerLineFeedWave,
     updatePaper
   };
