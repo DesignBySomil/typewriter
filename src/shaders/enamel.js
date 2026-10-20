@@ -1,13 +1,12 @@
 import * as THREE from 'three';
 
-// Cached procedural canvas maps so they are generated once and shared cleanly across materials
 let cachedCrinkleBundle = null;
 let cachedNickelBundle = null;
 
 /**
  * Generates seamless 512x512 procedural CanvasTextures for:
  * - normalMap (fine orange-peel / crinkle paint micro-normal)
- * - roughnessMap (matte 0.70 - 0.90 base with fingerprint smudge patches & micro-scratches)
+ * - roughnessMap (matte 0.64 - 0.92 with uneven paint sheen, smudges & micro-scratches)
  * - bumpMap (fine hammertone dimples, scratches & chipped corner wear)
  */
 function getCrinkleTextureBundle() {
@@ -31,7 +30,6 @@ function getCrinkleTextureBundle() {
   normCanvas.height = size;
   const nCtx = normCanvas.getContext('2d');
 
-  // Tileable multi-octave value noise helper
   function hash(ix, iy) {
     const x = ((ix % 64) + 64) % 64;
     const y = ((iy % 64) + 64) % 64;
@@ -59,16 +57,19 @@ function getCrinkleTextureBundle() {
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      // Fine crinkle / orange-peel height + subtle smudge variation
       const n1 = smoothNoise(x, y, 48);
       const n2 = smoothNoise(x + 37, y + 91, 96);
-      const smudge = smoothNoise(x, y, 8);
+      const smudge = smoothNoise(x, y, 6);
+      const sheenPatch = smoothNoise(x + 113, y + 53, 14);
       const h = n1 * 0.62 + n2 * 0.38;
       heightData[y * size + x] = h;
 
       const idx = (y * size + x) * 4;
-      // High roughness (200..248 out of 255 -> ~0.78..0.97)
-      const rVal = Math.min(252, Math.max(195, Math.floor(212 + (smudge - 0.5) * 36 + (h - 0.5) * 18)));
+      // Uneven matte paint sheen (168..244 out of 255 -> roughness ~0.65..0.95)
+      const rVal = Math.min(
+        246,
+        Math.max(166, Math.floor(206 + (smudge - 0.5) * 48 + (sheenPatch - 0.5) * 32 + (h - 0.5) * 18))
+      );
       rImg.data[idx] = rVal;
       rImg.data[idx + 1] = rVal;
       rImg.data[idx + 2] = rVal;
@@ -84,35 +85,35 @@ function getCrinkleTextureBundle() {
   rCtx.putImageData(rImg, 0, 0);
   bCtx.putImageData(bImg, 0, 0);
 
-  // Add subtle micro-scratches & fingerprint smudge ellipses onto bump & roughness maps
-  bCtx.strokeStyle = 'rgba(40, 40, 40, 0.32)';
-  rCtx.strokeStyle = 'rgba(250, 250, 250, 0.28)';
-  for (let i = 0; i < 42; i++) {
-    const sx = (hash(i, 11) * size);
-    const sy = (hash(i, 29) * size);
+  // Micro-scratches & handling wear lines
+  bCtx.strokeStyle = 'rgba(35, 35, 35, 0.36)';
+  rCtx.strokeStyle = 'rgba(250, 250, 250, 0.32)';
+  for (let i = 0; i < 52; i++) {
+    const sx = hash(i, 11) * size;
+    const sy = hash(i, 29) * size;
     const ang = hash(i, 47) * Math.PI * 2;
-    const len = 8 + hash(i, 61) * 26;
+    const len = 8 + hash(i, 61) * 28;
     bCtx.lineWidth = 0.8;
     bCtx.beginPath();
     bCtx.moveTo(sx, sy);
     bCtx.lineTo(sx + Math.cos(ang) * len, sy + Math.sin(ang) * len);
     bCtx.stroke();
 
-    rCtx.lineWidth = 1.0;
+    rCtx.lineWidth = 1.1;
     rCtx.beginPath();
     rCtx.moveTo(sx, sy);
     rCtx.lineTo(sx + Math.cos(ang) * len, sy + Math.sin(ang) * len);
     rCtx.stroke();
   }
 
-  // Subtle dull fingerprint smudge patches on roughness canvas
-  for (let i = 0; i < 14; i++) {
+  // Fingerprint / palm smudge patches on roughness canvas
+  for (let i = 0; i < 18; i++) {
     const fx = hash(i, 101) * size;
     const fy = hash(i, 131) * size;
-    const rad = 18 + hash(i, 163) * 32;
+    const rad = 20 + hash(i, 163) * 36;
     const grad = rCtx.createRadialGradient(fx, fy, 2, fx, fy, rad);
-    grad.addColorStop(0, 'rgba(242, 242, 242, 0.22)');
-    grad.addColorStop(1, 'rgba(242, 242, 242, 0.0)');
+    grad.addColorStop(0, 'rgba(244, 244, 244, 0.26)');
+    grad.addColorStop(1, 'rgba(244, 244, 244, 0.0)');
     rCtx.fillStyle = grad;
     rCtx.beginPath();
     rCtx.arc(fx, fy, rad, 0, Math.PI * 2);
@@ -178,18 +179,17 @@ function getNickelTextureBundle() {
   bCtx.fillStyle = '#808080';
   bCtx.fillRect(0, 0, size, size);
 
-  // Fine horizontal satin grain + oxidised dark pitting specks
   for (let y = 0; y < size; y++) {
-    const streak = Math.floor(145 + Math.sin(y * 1.7) * 18);
+    const streak = Math.floor(148 + Math.sin(y * 1.7) * 18);
     rCtx.fillStyle = `rgb(${streak}, ${streak}, ${streak})`;
     rCtx.fillRect(0, y, size, 1);
   }
 
-  for (let i = 0; i < 220; i++) {
+  for (let i = 0; i < 240; i++) {
     const px = (Math.abs(Math.sin(i * 73.1)) * size) % size;
     const py = (Math.abs(Math.cos(i * 139.7)) * size) % size;
     const rad = 0.8 + (i % 3) * 0.9;
-    rCtx.fillStyle = 'rgba(230, 230, 230, 0.55)';
+    rCtx.fillStyle = 'rgba(232, 232, 232, 0.55)';
     rCtx.beginPath();
     rCtx.arc(px, py, rad, 0, Math.PI * 2);
     rCtx.fill();
@@ -213,14 +213,13 @@ function getNickelTextureBundle() {
 }
 
 /**
- * Zero-Gloss Matte Crinkle Paint Material (Olivetti Lettera 32 Shell, Cheeks, Top Cover, Spacebar):
- * - metalness: 0.0 (pure matte/satin pigment paint, zero metallic sheen)
- * - roughness: 0.72 - 0.88 with canvas roughnessMap, normalMap & bumpMap
- * - envMapIntensity: 0.14 (no glossy environment reflection)
- * - Subtle edge chipping showing dull bare cast aluminum + dust in recessed creases
+ * Zero-Gloss Matte Crinkle Paint Material:
+ * - Uneven paint sheen (roughness 0.65 - 0.90)
+ * - Darker accumulated grime near the key deck edges & inner cheeks
+ * - Subtle corner chips showing dull bare cast aluminum + dust in creases
  */
 export function createEnamelMaterial({
-  baseColor = 0x6c7c78,
+  baseColor = 0x6b7b77,
   metalTint = 0x868c8a,
   roughness = 0.78,
   metalness = 0.0
@@ -230,7 +229,7 @@ export function createEnamelMaterial({
   const mat = new THREE.MeshStandardMaterial({
     color: baseColor,
     roughness,
-    metalness: 0.0, // Strictly 0 for painted/plastic surfaces
+    metalness: 0.0,
     roughnessMap,
     normalMap,
     normalScale: new THREE.Vector2(0.28, 0.28),
@@ -281,17 +280,30 @@ export function createEnamelMaterial({
         '#include <dithering_fragment>',
         `vec3 nW = normalize(vPaintWorldNormal);
 
-         // Chipped edges along sharp corners revealing dull bare grey metal (zero shine)
+         // Slightly uneven paint sheen / tonal mottling across the cast shell
+         float sheenVar = (lowNoise(vPaintWorldPos.xz * 1.6) - 0.5) * 0.05;
+         gl_FragColor.rgb += sheenVar * gl_FragColor.rgb;
+
+         // Darker accumulated grime near the key deck edges (X near ±4.4, Z between 1.6 and 4.6, Y between 0.4 and 1.9)
+         float deckEdgeX = smoothstep(3.3, 4.75, abs(vPaintWorldPos.x));
+         float deckZoneZ = smoothstep(1.2, 2.0, vPaintWorldPos.z) * smoothstep(4.8, 4.1, vPaintWorldPos.z);
+         float deckZoneY = smoothstep(2.1, 1.35, vPaintWorldPos.y);
+         float grimeNoise = lowNoise(vPaintWorldPos.xz * 6.5);
+         float deckGrime = deckEdgeX * deckZoneZ * deckZoneY * (0.45 + 0.55 * grimeNoise);
+         gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.11, 0.12, 0.11), deckGrime * 0.38);
+
+         // Subtle chips on shell corners & sharp bevels showing dull bare cast aluminum
          float bevelCurvature = length(fwidth(nW));
-         float chipNoise = smoothstep(0.35, 0.75, lowNoise(vPaintWorldPos.xz * 7.5 + vPaintWorldPos.xy * 5.0));
-         float edgeWear = smoothstep(0.09, 0.28, bevelCurvature) * chipNoise * 0.38;
-         gl_FragColor.rgb = mix(gl_FragColor.rgb, uMetalTint * 0.45, edgeWear);
+         float cornerMask = smoothstep(3.8, 4.9, abs(vPaintWorldPos.x)) * smoothstep(2.0, 4.6, abs(vPaintWorldPos.z));
+         float chipNoise = smoothstep(0.32, 0.72, lowNoise(vPaintWorldPos.xz * 8.5 + vPaintWorldPos.xy * 6.0));
+         float edgeWear = (smoothstep(0.08, 0.26, bevelCurvature) + cornerMask * 0.25) * chipNoise * 0.42;
+         gl_FragColor.rgb = mix(gl_FragColor.rgb, uMetalTint * 0.46, clamp(edgeWear, 0.0, 0.48));
 
          // Darkened ambient occlusion in low creases + subtle matte dust in upward pockets
          float creaseAO = smoothstep(0.15, 1.35, vPaintWorldPos.y) * 0.16 + 0.84;
          float dustMask = smoothstep(1.9, 0.45, vPaintWorldPos.y) * max(0.0, nW.y) * lowNoise(vPaintWorldPos.xz * 3.2);
          gl_FragColor.rgb *= creaseAO;
-         gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.42, 0.39, 0.35), dustMask * 0.12);
+         gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.44, 0.41, 0.36), dustMask * 0.14);
          #include <dithering_fragment>`
       );
   };
@@ -300,7 +312,7 @@ export function createEnamelMaterial({
 }
 
 /**
- * Oxidized Satin Nickel Material (Metals: roughness 0.54, metalness 0.80, dark patina & pitting, zero mirror shine)
+ * Oxidized Satin Nickel Material (Metals: roughness 0.54, metalness 0.80, dark patina & pitting)
  */
 export function createChromeMaterial() {
   const { roughnessMap, bumpMap } = getNickelTextureBundle();
@@ -346,8 +358,7 @@ export function createChromeMaterial() {
       )
       .replace(
         '#include <dithering_fragment>',
-        `// Darkened oxidized patina and fine pitting
-         float patina = patNoise(vNickelWorldPos.xz * 9.0 + vNickelWorldPos.xy * 6.0);
+        `float patina = patNoise(vNickelWorldPos.xz * 9.0 + vNickelWorldPos.xy * 6.0);
          gl_FragColor.rgb *= (0.78 + patina * 0.22);
          #include <dithering_fragment>`
       );
