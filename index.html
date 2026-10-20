@@ -38,56 +38,66 @@
 
   <!-- Full-screen SVG Telemetry HUD (Corner-anchored, never covers keys) -->
   <svg id="hud-overlay" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="dot-bloom" x="-150%" y="-150%" width="400%" height="400%">
+        <feGaussianBlur stdDeviation="2.8" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+    </defs>
+
     <g id="hud-corners"></g>
 
-    <!-- Leader Lines & Target Anchor Dots -->
+    <!-- Leader Lines & Glowing Target Anchor Dots -->
     <g id="hud-leaders">
       <polyline id="leader-carriage" class="leader-line" points="0,0 0,0 0,0" />
-      <circle id="dot-carriage" class="leader-dot" cx="0" cy="0" r="2.5" />
+      <circle id="dot-carriage" class="leader-dot" cx="0" cy="0" r="3" filter="url(#dot-bloom)" />
 
       <polyline id="leader-basket" class="leader-line" points="0,0 0,0 0,0" />
-      <circle id="dot-basket" class="leader-dot" cx="0" cy="0" r="2.5" />
+      <circle id="dot-basket" class="leader-dot" cx="0" cy="0" r="3" filter="url(#dot-bloom)" />
 
       <polyline id="leader-platen" class="leader-line" points="0,0 0,0 0,0" />
-      <circle id="dot-platen" class="leader-dot" cx="0" cy="0" r="2.5" />
+      <circle id="dot-platen" class="leader-dot" cx="0" cy="0" r="3" filter="url(#dot-bloom)" />
 
       <polyline id="leader-ribbon" class="leader-line" points="0,0 0,0 0,0" />
-      <circle id="dot-ribbon" class="leader-dot" cx="0" cy="0" r="2.5" />
+      <circle id="dot-ribbon" class="leader-dot" cx="0" cy="0" r="3" filter="url(#dot-bloom)" />
     </g>
 
     <!-- Compact Corner-Anchored Telemetry Cards -->
     <g id="hud-cards-group">
       <!-- 1. Carriage & Bell Card (Top Left Corner) -->
-      <g id="card-carriage" transform="translate(16, 48)">
-        <rect id="box-carriage" class="hud-box" x="0" y="0" width="152" height="54" rx="2" />
+      <g id="card-carriage" transform="translate(14, 44)">
+        <rect id="box-carriage" class="hud-box" x="0" y="0" width="148" height="52" rx="2" />
         <text class="hud-title" x="8" y="13">CARRIAGE POS</text>
-        <text id="hud-val-carriage" class="hud-value" x="8" y="29">0.0 mm [01/62]</text>
-        <text id="hud-val-bell" class="hud-sub" x="8" y="44">BELL IN: 54 CHARS</text>
+        <text id="hud-val-carriage" class="hud-value" x="8" y="28">0.0 mm [01/46]</text>
+        <text id="hud-val-bell" class="hud-sub" x="8" y="43">BELL IN: 38 CHARS</text>
       </g>
 
       <!-- 2. Platen & Line Feed Card (Top Right Corner) -->
-      <g id="card-platen" transform="translate(16, 110)">
-        <rect class="hud-box" x="0" y="0" width="152" height="54" rx="2" />
+      <g id="card-platen" transform="translate(14, 104)">
+        <rect class="hud-box" x="0" y="0" width="148" height="52" rx="2" />
         <text class="hud-title" x="8" y="13">PLATEN // PAGE</text>
-        <text id="hud-val-line" class="hud-value" x="8" y="29">LINE 01 / 28</text>
-        <text id="hud-val-case" class="hud-sub" x="8" y="44">BASKET: LOWER</text>
+        <text id="hud-val-line" class="hud-value" x="8" y="28">LINE 01 / 28</text>
+        <text id="hud-val-case" class="hud-sub" x="8" y="43">BASKET: LOWER</text>
       </g>
 
       <!-- 3. Typebasket & Strike Interval Sparkline (Bottom Left Corner) -->
-      <g id="card-basket" transform="translate(16, 180)">
-        <rect class="hud-box" x="0" y="0" width="152" height="72" rx="2" />
+      <g id="card-basket" transform="translate(14, 174)">
+        <rect class="hud-box" x="0" y="0" width="148" height="70" rx="2" />
         <text class="hud-title" x="8" y="13">TYPEBASKET</text>
-        <text id="hud-val-lastkey" class="hud-value" x="8" y="28">LAST: [NONE]</text>
-        <text id="hud-val-strikes" class="hud-sub" x="8" y="41">STRIKES: 0000</text>
-        <polyline id="hud-sparkline" fill="none" stroke="#72d6c9" stroke-width="1.3" points="8,64 144,64" />
+        <text id="hud-val-lastkey" class="hud-value" x="8" y="27">LAST: [NONE]</text>
+        <text id="hud-val-strikes" class="hud-sub" x="8" y="40">STRIKES: 0000</text>
+        <polyline id="hud-sparkline" fill="none" stroke="#72d6c9" stroke-width="1.3" points="8,62 140,62" />
       </g>
 
       <!-- 4. Ribbon & Ink Telemetry (Bottom Right Corner) -->
-      <g id="card-ribbon" transform="translate(16, 260)">
-        <rect class="hud-box" x="0" y="0" width="152" height="54" rx="2" />
+      <g id="card-ribbon" transform="translate(14, 254)">
+        <rect class="hud-box" x="0" y="0" width="148" height="52" rx="2" />
         <text class="hud-title" x="8" y="13">BICHROME RIBBON</text>
-        <text id="hud-val-ribbon" class="hud-value" x="8" y="29">BLACK // 100.0%</text>
-        <text id="hud-val-spool" class="hud-sub" x="8" y="44">SPOOL: 0.00 RAD</text>
+        <text id="hud-val-ribbon" class="hud-value" x="8" y="28">BLK // 100.0%</text>
+        <text id="hud-val-spool" class="hud-sub" x="8" y="43">SPOOL: 0.00 RAD</text>
       </g>
     </g>
   </svg>
@@ -98,7 +108,7 @@
     <span id="compact-line">LN: 01/28</span>
     <span id="compact-key">KEY: -</span>
     <span id="compact-strikes">STR: 0</span>
-    <span id="compact-bell">BELL: 54</span>
+    <span id="compact-bell">BELL: 38</span>
   </div>
 
   <!-- Center Intro Prompt -->
