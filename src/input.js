@@ -34,8 +34,11 @@ export function createInputSystem({
     }
   }
 
+  const mobileInputEl = document.getElementById('mobile-input');
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // While the hidden input is focused, printable keys and backspace arrive via its input event
+    if (mobileInputEl && e.target === mobileInputEl && (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Unidentified' || e.key === 'Process')) return;
 
     // Escape key toggles HUD visibility for clean screenshots
     if (e.key === 'Escape') {
@@ -127,30 +130,64 @@ export function createInputSystem({
     }
   });
 
-  // Hidden mobile input for on-screen virtual keyboards
-  const mobileInput = document.getElementById('mobile-input');
-  const btnKb = document.getElementById('btn-kb');
-  if (btnKb && mobileInput) {
-    btnKb.addEventListener('click', () => {
-      mobileInput.focus();
-    });
-
-    mobileInput.addEventListener('input', () => {
-      const val = mobileInput.value;
-      if (!val) return;
-      for (let i = 0; i < val.length; i++) {
-        const ch = val[i];
-        if (ch === ' ') {
-          enqueue(() => onSpace());
-        } else if (ch === '\n') {
-          enqueue(() => onCarriageReturn());
-        } else {
-          const ctrl = charToKeyMap.get(ch) || charToKeyMap.get(ch.toLowerCase());
-          if (ctrl) enqueue(() => onPrintableKey(ctrl, ch));
-        }
+  // Hidden mobile input for on-screen virtual keyboards.
+  // Focus must happen inside a user gesture handler. A zero-width sentinel char keeps the
+  // field non-empty so Backspace always produces an input event on Android and iOS.
+  const mobileInput = mobileInputEl;
+  const SENT = '\u200b';
+  let prev = '';
+  function resetInput() {
+    if (!mobileInput) return;
+    mobileInput.value = SENT;
+    prev = '';
+    try { mobileInput.setSelectionRange(1, 1); } catch (_) {}
+  }
+  function typeChar(ch) {
+    if (ch === ' ') return enqueue(() => onSpace());
+    if (ch === '\n' || ch === '\r') return enqueue(() => onCarriageReturn());
+    const ctrl = charToKeyMap.get(ch) || charToKeyMap.get(ch.toLowerCase());
+    if (ctrl && !ctrl.isSpecial) enqueue(() => onPrintableKey(ctrl, ch));
+  }
+  function openKeyboard() {
+    if (!mobileInput) return;
+    if (!mobileInput.value) resetInput();
+    mobileInput.focus({ preventScroll: true });
+    try { mobileInput.setSelectionRange(1, 1); } catch (_) {}
+  }
+  if (mobileInput) {
+    resetInput();
+    mobileInput.addEventListener('input', (e) => {
+      const v = mobileInput.value;
+      if (!v.startsWith(SENT)) {
+        // sentinel deleted: one backspace (or more if field was cleared of typed text)
+        const n = Math.max(1, prev.length);
+        for (let i = 0; i < n; i++) enqueue(() => onBackspace());
+        resetInput();
+        return;
       }
-      mobileInput.value = '';
+      const cur = v.slice(1);
+      if (cur.startsWith(prev)) {
+        for (const ch of cur.slice(prev.length)) typeChar(ch);
+      } else if (prev.startsWith(cur)) {
+        for (let i = 0; i < prev.length - cur.length; i++) enqueue(() => onBackspace());
+      } else {
+        for (const ch of cur) typeChar(ch);
+      }
+      prev = cur;
+      if (!e.isComposing) resetInput();
     });
+    mobileInput.addEventListener('compositionend', resetInput);
+    mobileInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); }
+    });
+    ['btn-kb', 'btn-kb-m'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('click', (e) => { e.preventDefault(); openKeyboard(); });
+    });
+    // Tapping the typewriter or paper opens the keyboard on touch devices
+    rendererDom.addEventListener('click', () => {
+      if (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) openKeyboard();
+    });
+    window.addEventListener('focus', () => {});
   }
 
   return {
