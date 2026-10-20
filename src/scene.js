@@ -12,7 +12,7 @@ export function createSceneSystem(container) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.24;
+  renderer.toneMappingExposure = 1.22;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.autoClear = false;
   container.appendChild(renderer.domElement);
@@ -36,47 +36,45 @@ export function createSceneSystem(container) {
 
   // 2. Main 3D Scene & Camera
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(34, window.innerWidth / window.innerHeight, 0.1, 120);
+  const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.1, 120);
 
-  // 3. Rich Studio Lighting (Lifted hemisphere + warm key + cool rim + soft front fill so nothing crushes to black)
-  const hemiLight = new THREE.HemisphereLight(0xfff0d8, 0x384952, 1.15);
+  // 3. Studio Lighting (Lifted hemisphere + warm key + cool rim + soft front fill)
+  const hemiLight = new THREE.HemisphereLight(0xfff2dc, 0x3a4b54, 1.18);
   hemiLight.position.set(0, 12, 0);
   scene.add(hemiLight);
 
-  const keyLight = new THREE.DirectionalLight(0xffe2be, 2.75);
-  keyLight.position.set(6.0, 11.5, 8.0);
+  const keyLight = new THREE.DirectionalLight(0xffe4c4, 2.65);
+  keyLight.position.set(5.8, 11.8, 8.2);
   keyLight.castShadow = true;
   keyLight.shadow.mapSize.set(2048, 2048);
   keyLight.shadow.camera.near = 2.0;
-  keyLight.shadow.camera.far = 30.0;
-  const d = 8.5;
+  keyLight.shadow.camera.far = 32.0;
+  const d = 9.0;
   keyLight.shadow.camera.left = -d;
   keyLight.shadow.camera.right = d;
   keyLight.shadow.camera.top = d;
   keyLight.shadow.camera.bottom = -d;
   keyLight.shadow.bias = -0.0005;
-  keyLight.shadow.radius = 2.5;
+  keyLight.shadow.radius = 2.6;
   scene.add(keyLight);
 
   const rimLight = new THREE.DirectionalLight(0x88d0ec, 1.55);
-  rimLight.position.set(-8.0, 7.0, -7.0);
+  rimLight.position.set(-8.0, 7.2, -7.0);
   scene.add(rimLight);
 
-  // Soft front fill light so front enamel chin, key stems, and typebasket are always clearly readable
-  const frontFill = new THREE.DirectionalLight(0xffeedd, 1.05);
-  frontFill.position.set(0.0, 5.0, 11.0);
+  const frontFill = new THREE.DirectionalLight(0xffeedd, 1.08);
+  frontFill.position.set(0.0, 5.2, 11.5);
   scene.add(frontFill);
 
-  // Breathing warm point light inside the typebasket
-  const basketLight = new THREE.PointLight(0xffb86c, 1.15, 9.0);
+  const basketLight = new THREE.PointLight(0xffb86c, 1.25, 9.5);
   basketLight.position.set(0, 3.1, 1.1);
   scene.add(basketLight);
 
-  // 4. Procedural Wood-Grain Tabletop Plane
+  // 4. Dark, Low-Contrast, Fine-Grained Walnut Tabletop with Warm Pool & Under-Foot AO
   const tableMat = new THREE.MeshStandardMaterial({
-    color: 0x2a1b12,
-    roughness: 0.62,
-    metalness: 0.05
+    color: 0x160f0a,
+    roughness: 0.74,
+    metalness: 0.04
   });
   tableMat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -97,65 +95,94 @@ export function createSceneSystem(container) {
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-         vec2 wp = vWorldPosTable.xz * vec2(0.55, 2.8);
-         float n = tblNoise(wp) * 0.6 + tblNoise(wp * 2.4) * 0.3 + tblNoise(wp * 6.0) * 0.1;
-         float grain = sin(vWorldPosTable.z * 8.5 + n * 5.2) * 0.5 + 0.5;
-         vec3 darkWalnut = vec3(0.095, 0.058, 0.038);
-         vec3 warmWalnut = vec3(0.20, 0.122, 0.078);
-         float deskVignette = smoothstep(20.0, 3.0, length(vWorldPosTable.xz));
-         diffuseColor.rgb = mix(darkWalnut, warmWalnut, grain * 0.7 + n * 0.3) * deskVignette;`
+         // Derivative-attenuated fine straight walnut fibers (no wavy high-contrast banding)
+         vec2 wp = vWorldPosTable.xz * vec2(1.4, 9.5);
+         float fw = length(fwidth(wp));
+         float grainFade = 1.0 - smoothstep(0.3, 1.5, fw);
+         float fineGrain = (tblNoise(wp) * 0.65 + tblNoise(wp * 2.7) * 0.35 - 0.5) * grainFade;
+
+         vec3 baseWalnut = vec3(0.068, 0.044, 0.031) + vec3(0.018, 0.011, 0.007) * fineGrain;
+
+         // Soft pool of warm studio light around the typewriter
+         float distCenter = length(vWorldPosTable.xz * vec2(0.72, 0.92));
+         float warmPool = exp(-distCenter * distCenter * 0.032);
+         vec3 litWalnut = baseWalnut + vec3(0.055, 0.033, 0.018) * warmPool;
+
+         // Under-chassis soft contact shadow
+         vec2 chassisBox = abs(vWorldPosTable.xz - vec2(0.0, 0.7)) / vec2(4.95, 3.65);
+         float chassisDist = length(max(chassisBox - 1.0, 0.0));
+         float chassisAO = mix(0.28, 1.0, smoothstep(0.0, 0.55, chassisDist));
+
+         // Ambient-occlusion darkening directly under the 4 rubber feet
+         float footAO = 1.0;
+         footAO *= smoothstep(0.15, 0.85, length(vWorldPosTable.xz - vec2(-4.6, -2.5)));
+         footAO *= smoothstep(0.15, 0.85, length(vWorldPosTable.xz - vec2( 4.6, -2.5)));
+         footAO *= smoothstep(0.15, 0.85, length(vWorldPosTable.xz - vec2(-4.6,  3.9)));
+         footAO *= smoothstep(0.15, 0.85, length(vWorldPosTable.xz - vec2( 4.6,  3.9)));
+         footAO = mix(0.15, 1.0, footAO);
+
+         // Smooth dark vignette toward outer edges + film grain
+         float edgeVignette = smoothstep(18.5, 4.2, distCenter);
+         float filmGrain = (tblHash(vWorldPosTable.xz * 80.0) - 0.5) * 0.008 * grainFade;
+
+         diffuseColor.rgb = litWalnut * chassisAO * footAO * edgeVignette + filmGrain;`
       );
   };
 
-  const tableMesh = new THREE.Mesh(new THREE.PlaneGeometry(50, 50), tableMat);
+  const tableMesh = new THREE.Mesh(new THREE.PlaneGeometry(54, 54), tableMat);
   tableMesh.rotation.x = -Math.PI / 2;
   tableMesh.position.y = 0.0;
   tableMesh.receiveShadow = true;
   scene.add(tableMesh);
 
   /**
-   * Computes exact camera distance & lookAt from the full machine bounding box
-   * and current viewport aspect ratio so paper top, platen, knobs, basket,
-   * all 4 key rows, spacebar, and front edge fit with comfortable margin.
+   * Computes camera distance & target so:
+   * - On Desktop (e.g. 1280x800): machine fills ~75% of the viewport width and sits slightly lower
+   *   so the hero paper sheet and all 4 key rows are large, commanding, and 100% legible.
+   * - On Portrait Mobile (e.g. 390x780): camera tilts higher, fits the full carriage + knobs width
+   *   with safe margin so the right knob is never clipped, and uses vertical space for the paper.
    */
   function computeFittedCameraPose() {
     const aspect = window.innerWidth / Math.max(1, window.innerHeight);
-    const bMin = CONFIG.machineBoundsMin;
-    const bMax = CONFIG.machineBoundsMax;
-
-    const boxWidth  = (bMax.x - bMin.x); // ~13.5 units
-    const boxHeight = (bMax.y - bMin.y); // ~6.85 units
-    const boxDepth  = (bMax.z - bMin.z); // ~8.8 units
-
-    // Center of visual interest (frames paper top down to spacebar bottom)
     const isPortrait = aspect < 0.92;
-    const target = new THREE.Vector3(
-      0.0,
-      isPortrait ? 3.15 : 3.05,
-      isPortrait ? 0.65 : 0.75
-    );
-
-    // Three-quarter high viewing direction (normalized)
-    const viewDir = isPortrait
-      ? new THREE.Vector3(0.03, 0.64, 0.768).normalize()
-      : new THREE.Vector3(0.07, 0.61, 0.789).normalize();
 
     const vFovRad = THREE.MathUtils.degToRad(camera.fov);
     const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * aspect);
 
-    // Apparent projected height and width at the three-quarter pitch angle
-    const effectiveHeight = boxHeight * 0.88 + boxDepth * 0.56;
-    const effectiveWidth  = boxWidth * 1.04;
+    // Target slightly higher Y so the machine sits lower in the frame and the tall paper sheet is centered
+    const target = new THREE.Vector3(
+      0.0,
+      isPortrait ? 3.25 : 3.42,
+      isPortrait ? 0.55 : 0.72
+    );
 
-    // Margin multiplier ensures HUD corner cards never touch keys or platen knobs
-    const marginFactor = isPortrait ? 1.18 : 1.24;
+    const viewDir = isPortrait
+      ? new THREE.Vector3(0.0, 0.65, 0.76).normalize()
+      : new THREE.Vector3(0.035, 0.56, 0.828).normalize();
 
-    const distForHeight = (effectiveHeight * 0.5 * marginFactor) / Math.tan(vFovRad * 0.5);
-    const distForWidth  = (effectiveWidth  * 0.5 * marginFactor) / Math.tan(hFovRad * 0.5);
-    const distance = Math.max(distForHeight, distForWidth, 14.2);
-
-    const pos = target.clone().addScaledVector(viewDir, distance);
-    return { pos, lookAt: target };
+    if (isPortrait) {
+      // Fit full platen + knobs + return lever width (14.4 world units) inside portrait width
+      const requiredWidth = 14.8;
+      const requiredHeight = 9.4;
+      const distW = (requiredWidth * 0.5) / Math.tan(hFovRad * 0.5);
+      const distH = (requiredHeight * 0.5) / Math.tan(vFovRad * 0.5);
+      const distance = Math.max(distW, distH, 13.5);
+      return {
+        pos: target.clone().addScaledVector(viewDir, distance),
+        lookAt: target
+      };
+    } else {
+      // Desktop: chassis + knobs span ~13.0 units; filling ~75% of viewport width means visible span ~16.8 units
+      const requiredWidth = 16.6;
+      const requiredHeight = 9.6;
+      const distW = (requiredWidth * 0.5) / Math.tan(hFovRad * 0.5);
+      const distH = (requiredHeight * 0.5) / Math.tan(vFovRad * 0.5);
+      const distance = Math.max(distW, distH, 11.8);
+      return {
+        pos: target.clone().addScaledVector(viewDir, distance),
+        lookAt: target
+      };
+    }
   }
 
   function handleResize() {
