@@ -15,12 +15,18 @@ export const PAPER_VERTEX_SHADER = /* glsl */`
     float heightRatio = clamp(uv.y, 0.0, 1.0);
     vArchFactor = heightRatio;
 
-    // Subtle mechanical flutter when line-feeding or inserting a sheet
+    // Subtle mechanical flutter when line-feeding or inserting/removing a sheet
     float flutter = sin(uv.y * 15.0 - uTime * 22.0) * uFeedWave * 0.032 * heightRatio;
 
-    // Sheet insertion slide animation
-    float slideOffset = (1.0 - uInsertProgress) * 1.80;
-    pos.y -= slideOffset * heightRatio;
+    // Sheet insertion / ejection vertical offset:
+    // uInsertProgress = 1.0 (normal seated), < 1.0 (sliding in from platen), > 1.0 (pulling up and out)
+    float slideOffset = (1.0 - uInsertProgress) * 1.95;
+    if (uInsertProgress > 1.0) {
+      pos.y += (uInsertProgress - 1.0) * 3.8;
+      pos.z -= (uInsertProgress - 1.0) * 0.75;
+    } else {
+      pos.y -= slideOffset * heightRatio;
+    }
     pos.z += flutter;
 
     vec4 worldPos = modelMatrix * vec4(pos, 1.0);
@@ -58,10 +64,14 @@ export const PAPER_FRAGMENT_SHADER = /* glsl */`
   }
 
   void main() {
-    // 80gsm Bond Paper UV Mapping:
-    // vUv.y = 0.30 is the active print line sitting right above the platen & paper bail bar.
+    // Top-to-Bottom Upright Page Mapping:
+    // Line 0 is drawn near the top of the canvas at LINE0_Y = 250px -> Texture V (flipY=true) = 1.0 - (250/2048) = 0.8779.
+    // vUv.y = 0.30 is the active strike line right above the platen.
+    // Higher vUv.y (above the platen) samples higher Texture V (smaller canvas Y = earlier lines),
+    // and each line feed makes uScrollV more negative (-70/2048 per line), rolling earlier lines UP the sheet!
+    // And below the strike line (vFromPrintPoint < 0), we mask out un-struck lower lines.
     float vFromPrintPoint = vUv.y - 0.30;
-    float texV = 0.0967 + vFromPrintPoint * 0.42 + uScrollV;
+    float texV = 0.8779 + vFromPrintPoint * 0.42 + uScrollV;
     vec2 texUv = vec2(vUv.x, texV);
 
     // Multi-octave 80gsm cotton bond paper fiber & visible laid pulp grain
@@ -73,8 +83,6 @@ export const PAPER_FRAGMENT_SHADER = /* glsl */`
     float lowPulp = noise(vUv * vec2(14.0, 18.0)) - 0.5;
     float fiber = ((f1 * 0.62 + f2 * 0.38) - 0.5) * fiberFade;
 
-    // Sample RGBA CanvasTexture:
-    // R = Black ink density, G = Red bichrome ink density, B = letterpress deboss heightfield
     vec2 texel = vec2(1.2 / 2048.0);
     vec4 cC = vec4(0.0);
     float hL = 0.0;
@@ -82,7 +90,8 @@ export const PAPER_FRAGMENT_SHADER = /* glsl */`
     float hD = 0.0;
     float hU = 0.0;
 
-    if (texUv.y >= 0.01 && texUv.y <= 0.99 && texUv.x >= 0.01 && texUv.x <= 0.99) {
+    // Only sample above the lower platen wrap (vUv.y >= 0.24) and within valid texture bounds
+    if (vUv.y >= 0.24 && texUv.y >= 0.01 && texUv.y <= 0.99 && texUv.x >= 0.01 && texUv.x <= 0.99) {
       cC = texture2D(uTextMap, texUv);
       hL = texture2D(uTextMap, texUv - vec2(texel.x, 0.0)).b;
       hR = texture2D(uTextMap, texUv + vec2(texel.x, 0.0)).b;
@@ -92,13 +101,14 @@ export const PAPER_FRAGMENT_SHADER = /* glsl */`
 
     float hC = cC.b;
 
-    // Ink sinks into the 80gsm bond fibers (soft wicking halo + crisp dark core + tiny ink specks)
+    // Ink sinks into the 80gsm bond fibers (soft wicking halo + crisp dark core + stencil blind deboss support)
     float neighborAvg = (hL + hR + hD + hU) * 0.25;
-    float wickingHalo = clamp(neighborAvg * 0.92 + fiber * 0.32 * neighborAvg, 0.0, 1.0);
-    float coreMask = smoothstep(0.16, 0.68, hC) * (0.94 + fiber * 0.12);
+    float inkPresent = clamp(cC.r + cC.g, 0.0, 1.0);
+    float wickingHalo = clamp(neighborAvg * 0.92 + fiber * 0.32 * neighborAvg, 0.0, 1.0) * smoothstep(0.0, 0.2, inkPresent);
+    float coreMask = smoothstep(0.16, 0.68, inkPresent) * (0.94 + fiber * 0.12);
     float inkMask  = clamp(max(coreMask, wickingHalo * 0.65), 0.0, 1.0);
 
-    // Finite-difference normal perturbation for tactile letterpress deboss indentation
+    // Finite-difference normal perturbation for tactile letterpress deboss indentation (works for Black, Red & Stencil!)
     float dX = (hR - hL) * 6.0 + fiber * 0.11;
     float dY = (hU - hD) * 6.0 + fiber * 0.11;
     vec3 perturbedNormal = normalize(vWorldNormal + vec3(-dX, -dY, 0.0) * 0.48);
