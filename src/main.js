@@ -37,7 +37,7 @@ const carriageSys = buildCarriageSystem(
   keysSys.clickableMeshes
 );
 
-// 6. Build Curved Paper Sheet & Letterpress Deboss Shader
+// 6. Build Curved Hero Paper Sheet & Letterpress Deboss Shader
 const paperSys = createPaperSystem(carriageSys.carriageGroup);
 
 // 7. Build SVG Telemetry HUD
@@ -73,14 +73,14 @@ function dismissIntroPrompt() {
 /**
  * Handles a printable character keystroke immediately so rapid typing (12+ keys/sec)
  * never drops a character, while launching the 3D key depression, typebar swing,
- * 60ms strike hold, slug flash, platen recoil, and carriage escapement step.
+ * 85ms strike hold, slug bloom flash, platen recoil, and carriage escapement step.
  */
 function handlePrintableKey(ctrl, explicitChar = null) {
   sound.init();
   dismissIntroPrompt();
 
-  // Depress 3D keycap with spring
-  keysSys.depressKey(ctrl, 0.16);
+  // Depress 3D keycap with spring & warm highlight
+  keysSys.depressKey(ctrl, 0.22);
   sound.playKeyClack(0.95 + Math.random() * 0.1);
 
   const charToPrint = explicitChar
@@ -105,24 +105,24 @@ function handlePrintableKey(ctrl, explicitChar = null) {
   telemetry.strikeIntervals.push(dtMs);
   if (telemetry.strikeIntervals.length > 18) telemetry.strikeIntervals.shift();
 
-  // Capture target column for this character immediately so zero keystrokes are ever lost
+  // Capture target column immediately so zero keystrokes are ever lost
   const targetCol = telemetry.col;
   const targetLineId = telemetry.totalLinesTyped;
   const targetRibbon = telemetry.ribbonColor;
 
-  // Stamp character onto paper canvas & advance carriage one char width left
+  // Stamp character onto hero paper canvas & advance carriage one char width left
   paperSys.stampCharacter(charToPrint, targetCol, 0, targetRibbon, targetLineId);
 
   telemetry.strikes++;
   telemetry.ribbonInk = Math.max(10.0, 100.0 - telemetry.strikes * 0.035);
-  if (telemetry.strikes % 48 === 0) telemetry.spoolDirection *= -1;
-  telemetry.spoolAngle += 0.09 * telemetry.spoolDirection;
+  if (telemetry.strikes % 46 === 0) telemetry.spoolDirection *= -1;
+  telemetry.spoolAngle += 0.095 * telemetry.spoolDirection;
   chassis.spoolGroupLeft.rotation.y = telemetry.spoolAngle;
   chassis.spoolGroupRight.rotation.y = telemetry.spoolAngle;
 
   // Advance column & translate carriage left so the struck character sits at world X = 0
   telemetry.col = Math.min(CONFIG.maxCols, telemetry.col + 1);
-  carriageSys.advanceToCol(telemetry.col, -0.42);
+  carriageSys.advanceToCol(telemetry.col, -0.45);
 
   // Ring margin bell 8 characters before right margin
   if (telemetry.col === CONFIG.maxCols - CONFIG.bellOffset) {
@@ -147,7 +147,7 @@ function handleSpace() {
   dismissIntroPrompt();
 
   const sc = keysSys.keyMap.get('Space');
-  keysSys.depressKey(sc, 0.14);
+  keysSys.depressKey(sc, 0.18);
   telemetry.lastKeyLabel = 'SPACE';
   sound.playKeyClack(0.82);
 
@@ -158,7 +158,7 @@ function handleSpace() {
   }
 
   telemetry.col++;
-  carriageSys.advanceToCol(telemetry.col, -0.34);
+  carriageSys.advanceToCol(telemetry.col, -0.36);
   sound.playCarriageAdvanceClick(0.02);
 
   if (telemetry.col === CONFIG.maxCols - CONFIG.bellOffset) {
@@ -175,14 +175,14 @@ function handleBackspace() {
   dismissIntroPrompt();
 
   const bc = keysSys.keyMap.get('Backspace');
-  keysSys.depressKey(bc, 0.14);
+  keysSys.depressKey(bc, 0.20);
   telemetry.lastKeyLabel = 'BACK';
   sound.playKeyClack(1.08);
 
   if (telemetry.col > 0) {
     telemetry.col--;
     telemetry.marginLocked = false;
-    carriageSys.advanceToCol(telemetry.col, 0.34);
+    carriageSys.advanceToCol(telemetry.col, 0.36);
     sound.playCarriageAdvanceClick(0.02);
   }
 }
@@ -192,7 +192,7 @@ function handleCarriageReturn() {
   dismissIntroPrompt();
 
   const ec = keysSys.keyMap.get('Enter');
-  keysSys.depressKey(ec, 0.15);
+  keysSys.depressKey(ec, 0.20);
   telemetry.lastKeyLabel = 'CR / LF';
 
   const distanceRatio = Math.max(0.2, telemetry.col / CONFIG.maxCols);
@@ -205,7 +205,6 @@ function handleCarriageReturn() {
 
   carriageSys.triggerCarriageReturnMotion();
 
-  // If the page fills (28 lines), automatically feed a fresh sheet from behind the platen!
   if (telemetry.pageLine >= CONFIG.maxLinesPerPage) {
     telemetry.pageLine = 0;
     paperSys.triggerNewSheetInsert();
@@ -223,8 +222,8 @@ function handleShiftChange(mode) {
   typebarsSys.setBasketShift(nextState);
   const sl = keysSys.keyMap.get('ShiftLeft');
   const sr = keysSys.keyMap.get('ShiftRight');
-  if (sl) sl.targetPress = nextState ? 0.14 : 0;
-  if (sr) sr.targetPress = nextState ? 0.14 : 0;
+  if (sl) sl.targetPress = nextState ? 0.18 : 0;
+  if (sr) sr.targetPress = nextState ? 0.18 : 0;
 
   if (nextState) {
     sound.init();
@@ -235,7 +234,7 @@ function handleShiftChange(mode) {
 function handleToggleRibbonColor() {
   sound.init();
   const tc = keysSys.keyMap.get('Tab');
-  keysSys.depressKey(tc, 0.14);
+  keysSys.depressKey(tc, 0.20);
   sound.playKeyClack(1.12);
 
   telemetry.ribbonColor = telemetry.ribbonColor === 'black' ? 'red' : 'black';
@@ -294,6 +293,8 @@ const clock = new THREE.Clock();
 let elapsedTotal = 0;
 const smoothPointer = new THREE.Vector2(0, 0);
 const currentLookAt = new THREE.Vector3();
+const camOffsetVec = new THREE.Vector3();
+const spherical = new THREE.Spherical();
 
 function animate() {
   requestAnimationFrame(animate);
@@ -307,7 +308,7 @@ function animate() {
   sceneSys.bgUniforms.uTime.value = elapsedTotal;
 
   // Subtle idle breathing light inside the typebasket
-  basketLight.intensity = 1.15 + Math.sin(elapsedTotal * 2.1) * 0.18;
+  basketLight.intensity = 1.25 + Math.sin(elapsedTotal * 2.2) * 0.22;
 
   // Update mechanical subsystems
   keysSys.updateKeys(dt);
@@ -319,7 +320,7 @@ function animate() {
   telemetry.vibratorLiftY *= Math.exp(-dt * 24.0);
   chassis.vibratorGroup.position.y = 3.10 + telemetry.vibratorLiftY;
 
-  // Camera 2s ease-in intro push + bounding-box framing + pointer parallax + micro-shake
+  // Camera 2s ease-in intro push + ~3-degree pointer parallax + subtle idle drift
   const introProgress = Math.min(1.0, elapsedTotal / 2.0);
   const introEase = 1.0 - Math.pow(1.0 - introProgress, 3.0);
 
@@ -327,23 +328,37 @@ function animate() {
   smoothPointer.y += (inputSys.pointerNDC.y - smoothPointer.y) * Math.min(1.0, dt * 5.0);
 
   const basePose = sceneSys.computeFittedCameraPose();
-  const introOffset = (1.0 - introEase) * 2.2;
-  const swayX = Math.sin(elapsedTotal * 0.60) * 0.06 + smoothPointer.x * 0.35;
-  const swayY = Math.cos(elapsedTotal * 0.48) * 0.04 + smoothPointer.y * 0.20;
+  const introPush = (1.0 - introEase) * 1.9;
+
+  // Compute spherical orbit offset around target for a true ~3 degree (0.052 rad) pointer parallax + idle drift
+  camOffsetVec.copy(basePose.pos).sub(basePose.lookAt);
+  spherical.setFromVector3(camOffsetVec);
+
+  const maxParallaxRad = THREE.MathUtils.degToRad(3.0); // 3 degrees
+  const idleDriftAzimuth = Math.sin(elapsedTotal * 0.55) * 0.008;
+  const idleDriftPolar   = Math.cos(elapsedTotal * 0.42) * 0.006;
+
+  spherical.theta += smoothPointer.x * maxParallaxRad + idleDriftAzimuth;
+  spherical.phi = THREE.MathUtils.clamp(
+    spherical.phi - smoothPointer.y * maxParallaxRad * 0.75 + idleDriftPolar,
+    0.25,
+    Math.PI * 0.46
+  );
+  spherical.radius += introPush;
+
+  camOffsetVec.setFromSpherical(spherical);
 
   telemetry.cameraShake *= Math.exp(-dt * 30.0);
   const shakeX = (Math.random() - 0.5) * telemetry.cameraShake;
   const shakeY = (Math.random() - 0.5) * telemetry.cameraShake;
 
-  camera.position.set(
-    basePose.pos.x + swayX + shakeX,
-    basePose.pos.y + introOffset * 0.5 + swayY + shakeY,
-    basePose.pos.z + introOffset
-  );
+  camera.position.copy(basePose.lookAt).add(camOffsetVec);
+  camera.position.x += shakeX;
+  camera.position.y += shakeY;
 
   currentLookAt.copy(basePose.lookAt);
-  currentLookAt.x += smoothPointer.x * 0.12;
-  currentLookAt.y += smoothPointer.y * 0.08 + shakeY * 0.5;
+  currentLookAt.x += smoothPointer.x * 0.14;
+  currentLookAt.y += smoothPointer.y * 0.09 + shakeY * 0.5;
   camera.lookAt(currentLookAt);
 
   // Update SVG Telemetry HUD
