@@ -6,6 +6,7 @@ import { buildKeysSystem } from './keys.js';
 import { buildTypebarsSystem } from './typebars.js';
 import { buildCarriageSystem } from './carriage.js';
 import { createPaperSystem } from './paper.js';
+import { createExportSystem } from './export.js';
 import { TypewriterAudio } from './audio.js';
 import { createHudSystem } from './hud.js';
 import { createInputSystem } from './input.js';
@@ -289,6 +290,24 @@ const inputSys = createInputSystem({
   onToggleRibbonColor: handleToggleRibbonColor,
   onToggleHudVisibility: handleToggleHudVisibility
 });
+
+const exportSys = createExportSystem(paperSys.paperCanvas);
+window.typewriter = { export: exportSys };
+const printMenu = document.getElementById('print-menu');
+const btnPrint = document.getElementById('btn-print');
+[btnPrint, document.getElementById('btn-print-m')].forEach((btn) => btn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  printMenu?.classList.toggle('open');
+  btn.blur();
+}));
+document.getElementById('btn-kb-m')?.addEventListener('click', () => document.getElementById('mobile-input')?.focus());
+document.getElementById('pm-png')?.addEventListener('click', () => { exportSys.savePNG(); printMenu.classList.remove('open'); });
+document.getElementById('pm-pdf')?.addEventListener('click', () => { exportSys.savePDF(); printMenu.classList.remove('open'); });
+document.getElementById('pm-print')?.addEventListener('click', () => { exportSys.printPage(); printMenu.classList.remove('open'); });
+window.addEventListener('pointerdown', (e) => {
+  if (printMenu && !printMenu.contains(e.target) && e.target.id !== 'btn-print' && e.target.id !== 'btn-print-m') printMenu.classList.remove('open');
+});
+document.querySelectorAll('#print-menu button, .hud-btn').forEach((b) => b.addEventListener('click', () => b.blur()));
 
 document.getElementById('btn-return')?.addEventListener('click', () => handleCarriageReturn());
 document.getElementById('btn-ribbon')?.addEventListener('click', () => handleToggleRibbonColor());
