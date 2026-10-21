@@ -15,34 +15,25 @@ import { createExportSystem } from './export.js';
 const container = document.getElementById('webgl-container');
 const sound = new TypewriterAudio();
 
-// 1. Initialize Scene, Camera, Renderer, RoomEnvironment & Warm Matte Tabletop
 const sceneSys = createSceneSystem(container);
 const { renderer, scene, camera, bgScene, bgCamera, basketLight } = sceneSys;
 
-// 2. Build 1963 Olivetti Lettera 32 Chassis, Screw Heads, Serial Plate, Covered Spools, Ribbon Switch & Vibrator
 const chassis = buildMachineChassis(scene);
-
-// 3. Build 44 Staggered Keys, Wide Shift Keys, Dusty Scuffed Spacebar & Linkage Rods
 const keysSys = buildKeysSystem(chassis.machineRoot, chassis.materials);
 
-// 4. Build Typebasket, 44 Dull Steel Typebars with Ink-Staining Slugs & Ink-Dust Emitter
 const typebarsSys = buildTypebarsSystem(
   chassis.machineRoot,
   chassis.materials,
   keysSys.printableControllers
 );
 
-// 5. Build Carriage, Matte Rubber Platen, Indexed Ribbed Knobs, Margin Stops, Paper Release & Return Lever
 const carriageSys = buildCarriageSystem(
   chassis.machineRoot,
   chassis.materials,
   keysSys.clickableMeshes
 );
 
-// 6. Build 80gsm Bond Paper Sheet & Letterpress Deboss Shader
 const paperSys = createPaperSystem(carriageSys.carriageGroup);
-
-// 7. Build SVG Telemetry HUD & Print/Save Export System
 const hudSys = createHudSystem(camera, carriageSys.carriageGroup);
 const exportSys = createExportSystem(paperSys);
 
@@ -72,11 +63,11 @@ function getActiveColumnBounds() {
 const initialBounds = getActiveColumnBounds();
 carriageSys.setMarginStopPositions(userMargins.leftCol, userMargins.rightCol);
 
-// 8. Live Telemetry & Mechanical State
 const telemetry = {
   col: initialBounds.minCol,
   fractionalCol: initialBounds.minCol,
   pageLine: 0,
+  fractionalLine: 0,
   totalLinesTyped: 0,
   strikes: 0,
   lastKeyLabel: '[NONE]',
@@ -84,7 +75,7 @@ const telemetry = {
   shiftLockedNext: false,
   paperReleased: false,
   marginLocked: false,
-  ribbonColor: 'black',   // 'black' | 'red' | 'stencil'
+  ribbonColor: 'black',
   ribbonInk: 100.0,
   spoolAngle: 0.0,
   spoolDirection: 1,
@@ -262,6 +253,7 @@ function handleCarriageReturn() {
   if (!paperSys.isSheetPresent()) {
     paperSys.triggerNewSheetInsert();
     telemetry.pageLine = 0;
+    telemetry.fractionalLine = 0;
     lastPlatenTickLine = 0;
     return;
   }
@@ -269,11 +261,13 @@ function handleCarriageReturn() {
   telemetry.pageLine++;
   if (telemetry.pageLine >= CONFIG.maxLinesPerPage) {
     telemetry.pageLine = 0;
+    telemetry.fractionalLine = 0;
     lastPlatenTickLine = 0;
     paperSys.triggerNewSheetInsert();
   } else {
     paperSys.rollCanvasTextUpOneLine();
     paperSys.triggerLineFeedWave();
+    telemetry.fractionalLine = telemetry.pageLine;
     lastPlatenTickLine = telemetry.pageLine;
   }
 }
@@ -328,9 +322,6 @@ function handleCycleRibbonMode() {
   }
 }
 
-/**
- * Continuous or stepped platen knob / roller line feed
- */
 function handlePlatenLineFeed(deltaLines, snapToLine = false) {
   sound.init();
   dismissIntroPrompt();
@@ -338,6 +329,7 @@ function handlePlatenLineFeed(deltaLines, snapToLine = false) {
 
   if (paperSys.isSheetPresent()) {
     const newLine = paperSys.scrollByLines(deltaLines, snapToLine);
+    telemetry.fractionalLine = newLine;
     const rounded = Math.round(newLine);
     if (rounded !== lastPlatenTickLine) {
       lastPlatenTickLine = rounded;
@@ -346,31 +338,37 @@ function handlePlatenLineFeed(deltaLines, snapToLine = false) {
       }
     }
     telemetry.pageLine = Math.max(0, Math.min(CONFIG.maxLinesPerPage - 1, rounded));
-  } else if (snapToLine) {
-    sound.playCarriageAdvanceClick(0.0);
+  } else {
+    telemetry.fractionalLine = THREE.MathUtils.clamp(
+      telemetry.fractionalLine + deltaLines,
+      0,
+      CONFIG.maxLinesPerPage - 1
+    );
+    telemetry.pageLine = Math.round(telemetry.fractionalLine);
+    if (snapToLine) {
+      sound.playCarriageAdvanceClick(0.0);
+    }
   }
   telemetry.lastKeyLabel = deltaLines >= 0 ? 'ROLL UP' : 'ROLL DN';
 }
 
-/**
- * Eases platen & paper to the nearest integer line on pointer release with a ratchet click
- */
 function handlePlatenSnapLine() {
-  if (!paperSys.isSheetPresent()) return;
-  const snappedLine = paperSys.snapToNearestLine();
-  telemetry.pageLine = Math.max(0, Math.min(CONFIG.maxLinesPerPage - 1, snappedLine));
+  if (paperSys.isSheetPresent()) {
+    const snappedLine = paperSys.snapToNearestLine();
+    telemetry.pageLine = Math.max(0, Math.min(CONFIG.maxLinesPerPage - 1, snappedLine));
+    telemetry.fractionalLine = telemetry.pageLine;
+  } else {
+    telemetry.pageLine = Math.round(telemetry.fractionalLine);
+    telemetry.fractionalLine = telemetry.pageLine;
+  }
   lastPlatenTickLine = telemetry.pageLine;
   sound.playCarriageAdvanceClick(0.0);
 }
 
-/**
- * Continuous horizontal carriage slide by dragging the paper or carriage body left/right
- */
 function handleCarriageSlideContinuous(pixelDx) {
   sound.init();
   dismissIntroPrompt();
   const bounds = getActiveColumnBounds();
-  // Dragging carriage RIGHT (pixelDx > 0) decreases column index; dragging LEFT increases column index
   const colDelta = -pixelDx / 14.0;
   telemetry.fractionalCol = THREE.MathUtils.clamp(
     telemetry.fractionalCol + colDelta,
@@ -393,9 +391,6 @@ function handleCarriageSlideContinuous(pixelDx) {
   telemetry.lastKeyLabel = `COL ${telemetry.col + 1}`;
 }
 
-/**
- * Snaps carriage to the nearest column on pointer release
- */
 function handleCarriageSlideSnap() {
   const bounds = getActiveColumnBounds();
   telemetry.col = THREE.MathUtils.clamp(Math.round(telemetry.fractionalCol), bounds.minCol, bounds.maxCol);
@@ -449,6 +444,7 @@ function handleRemoveOrInsertPaper(mode = 'toggle') {
     telemetry.col = bounds.minCol;
     telemetry.fractionalCol = bounds.minCol;
     telemetry.pageLine = 0;
+    telemetry.fractionalLine = 0;
     lastPlatenTickLine = 0;
     telemetry.marginLocked = false;
     carriageSys.triggerCarriageReturnMotion(bounds.minCol);
@@ -466,7 +462,6 @@ function handleToggleHudVisibility() {
   document.body.classList.toggle('hud-hidden');
 }
 
-// 9. Wire PRINT / SAVE Panel & Controls
 const printSavePanel = document.getElementById('print-save-panel');
 function isExportPanelOpen() {
   return printSavePanel && !printSavePanel.classList.contains('hidden');
@@ -506,7 +501,6 @@ document.getElementById('btn-export-print')?.addEventListener('click', (e) => {
   closeExportPanel();
 });
 
-// 10. Wire Keyboard Input System & 3D Interactive Controls System
 const inputSys = createInputSystem({
   rendererDom: renderer.domElement,
   keyMap: keysSys.keyMap,
@@ -575,7 +569,6 @@ window.addEventListener('resize', () => {
   }
 });
 
-// 11. Main 60fps Animation & Render Loop
 const clock = new THREE.Clock();
 let elapsedTotal = 0;
 const smoothPointer = new THREE.Vector2(0, 0);
