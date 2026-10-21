@@ -1,9 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 
-/**
- * Creates a small non-intrusive HUD toast element for "PULL UP TO REMOVE" feedback when holding the paper
- */
 function createPullToastElement() {
   let el = document.getElementById('pull-sheet-toast');
   if (el) return el;
@@ -35,17 +32,6 @@ function createPullToastElement() {
   return el;
 }
 
-/**
- * Continuous, tactile 3D hardware controls on both Desktop Mouse and Phone Touch:
- * 1. Platen knobs & full-length platen roller: 1:1 continuous vertical drag (fractional lines, no 22px notches),
- *    easing to the nearest line with a ratchet click on release.
- * 2. Carriage slide: continuous horizontal drag on the paper or carriage body, clamped between active
- *    margin stops, with ratchet clicks per column and snap to nearest column on release.
- * 3. Paper pull-out: upward drag on the paper when Paper Release is ON, OR after a 250ms hold ("PULL UP TO REMOVE").
- *    Sheet follows finger up 1:1; if pulled past 25% of its height it flies out (archived for PRINT/SAVE),
- *    otherwise it settles back into place. Tapping/dragging the empty platen inserts a fresh sheet.
- * 4. Generous hit areas (knob hit radius 1.2, full platen roller, full paper sheet, carriage body) + grab/grabbing cursors.
- */
 export function createControlsSystem({
   rendererDom,
   camera,
@@ -84,6 +70,15 @@ export function createControlsSystem({
     controlMeshes.push(mesh);
   }
 
+  function registerGroupChildren(group, controlId, extraData = {}) {
+    if (!group) return;
+    group.traverse((child) => {
+      if (child.isMesh) {
+        registerControlMesh(child, controlId, extraData);
+      }
+    });
+  }
+
   // 1 & 2. Register all 3D keys
   keysSys.clickableMeshes.forEach((m) => {
     const ctrl = m.userData.keyController;
@@ -92,32 +87,42 @@ export function createControlsSystem({
     registerControlMesh(m, `key:${ctrl.code}`, { keyController: ctrl });
   });
 
-  // 3. Carriage Return Lever (enlarged hit box)
-  const crHit = new THREE.Mesh(new THREE.BoxGeometry(1.30, 1.0, 2.35), hitMat);
-  crHit.position.set(0.10, 0.12, 0.95);
+  // 3. Carriage Return Lever (shrunk & offset forward away from left knob center, >=44px on 390px phone)
+  registerGroupChildren(carriageSys.returnLeverGroup, 'carriageReturnLever');
+  const crHit = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 1.35), hitMat);
+  crHit.position.set(0.28, 0.08, 1.25);
   carriageSys.returnLeverGroup.add(crHit);
   registerControlMesh(crHit, 'carriageReturnLever');
 
-  // 4. Left & Right Platen Knobs (generous hit radius 1.2 for effortless phone thumb grab)
-  const knobHitGeo = new THREE.CylinderGeometry(1.20, 1.20, 1.25, 20);
+  // 4. Left & Right Platen Knobs (priority 0: wins over every other control; offset slightly outward)
+  registerGroupChildren(carriageSys.leftKnob, 'platenKnobLeft');
+  registerGroupChildren(carriageSys.rightKnob, 'platenKnobRight');
+
+  const knobHitGeo = new THREE.CylinderGeometry(0.95, 0.95, 1.05, 20);
   knobHitGeo.rotateZ(Math.PI / 2);
 
   const leftKnobHit = new THREE.Mesh(knobHitGeo, hitMat);
+  leftKnobHit.position.x = -0.18;
   carriageSys.leftKnob.add(leftKnobHit);
   registerControlMesh(leftKnobHit, 'platenKnobLeft');
 
   const rightKnobHit = new THREE.Mesh(knobHitGeo, hitMat);
+  rightKnobHit.position.x = 0.18;
   carriageSys.rightKnob.add(rightKnobHit);
   registerControlMesh(rightKnobHit, 'platenKnobRight');
 
   // 5. Ribbon Colour Switch Lever on the right top cover
-  const ribSelHit = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.75, 1.05), hitMat);
+  registerGroupChildren(chassis.ribbonSelectorBase, 'ribbonSwitchLever');
+  const ribSelHit = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.65, 0.85), hitMat);
   ribSelHit.position.set(0, 0.12, 0.08);
   chassis.ribbonSelectorBase.add(ribSelHit);
   registerControlMesh(ribSelHit, 'ribbonSwitchLever');
 
   // 6. Left & Right Margin Stop Sliders on the scale rail
-  const marginStopHitGeo = new THREE.BoxGeometry(1.10, 0.95, 0.95);
+  registerGroupChildren(carriageSys.leftMarginStopGroup, 'marginStopLeft');
+  registerGroupChildren(carriageSys.rightMarginStopGroup, 'marginStopRight');
+
+  const marginStopHitGeo = new THREE.BoxGeometry(0.85, 0.78, 0.78);
   const leftStopHit = new THREE.Mesh(marginStopHitGeo, hitMat);
   leftStopHit.position.set(0, 0.15, 0);
   carriageSys.leftMarginStopGroup.add(leftStopHit);
@@ -128,23 +133,23 @@ export function createControlsSystem({
   carriageSys.rightMarginStopGroup.add(rightStopHit);
   registerControlMesh(rightStopHit, 'marginStopRight');
 
-  // 7. Paper Release Lever on the right side of the carriage
-  const prLeverHit = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.05, 1.05), hitMat);
-  prLeverHit.position.set(0.05, 0.22, 0.08);
+  // 7. Paper Release Lever on the right side of the carriage (shrunk & offset inward/upward away from right knob)
+  registerGroupChildren(carriageSys.paperReleaseLeverGroup, 'paperReleaseLever');
+  const prLeverHit = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.58, 0.58), hitMat);
+  prLeverHit.position.set(-0.18, 0.36, 0.18);
   carriageSys.paperReleaseLeverGroup.add(prLeverHit);
   registerControlMesh(prLeverHit, 'paperReleaseLever');
 
   // 8. Full-Length Platen Roller Hit Cylinder, Full Paper Sheet Hit Box, and Carriage Body Hit Meshes
-  const platenHitGeo = new THREE.CylinderGeometry(CONFIG.platenRadius * 1.65, CONFIG.platenRadius * 1.65, CONFIG.platenLength, 20);
+  const platenHitGeo = new THREE.CylinderGeometry(CONFIG.platenRadius * 1.55, CONFIG.platenRadius * 1.55, CONFIG.platenLength - 0.3, 20);
   platenHitGeo.rotateZ(Math.PI / 2);
   const platenHitMesh = new THREE.Mesh(platenHitGeo, hitMat);
   carriageSys.platenRollerGroup.add(platenHitMesh);
   registerControlMesh(platenHitMesh, 'platenRoller');
   registerControlMesh(carriageSys.platenMesh, 'platenRoller');
 
-  // Generous full-sheet hit volume covering the curved paper sheet
   const paperHitBox = new THREE.Mesh(
-    new THREE.BoxGeometry(CONFIG.paperWidth + 0.6, CONFIG.paperSheetHeight + 1.0, 1.5),
+    new THREE.BoxGeometry(CONFIG.paperWidth + 0.3, CONFIG.paperSheetHeight + 0.9, 1.35),
     hitMat
   );
   paperHitBox.position.set(0, 1.65, -0.35);
@@ -153,26 +158,25 @@ export function createControlsSystem({
   registerControlMesh(paperSys.paperMesh, 'paperSheet');
   registerControlMesh(paperHitBox, 'paperSheet');
 
-  // Carriage Body Hit Meshes (end plates & rear paper table) for horizontal carriage sliding
   if (carriageSys.leftCarriagePlate) registerControlMesh(carriageSys.leftCarriagePlate, 'carriageBody');
   if (carriageSys.rightCarriagePlate) registerControlMesh(carriageSys.rightCarriagePlate, 'carriageBody');
   if (carriageSys.paperTableMesh) registerControlMesh(carriageSys.paperTableMesh, 'carriageBody');
 
   const carriageBodyHit = new THREE.Mesh(
-    new THREE.BoxGeometry(CONFIG.platenLength + 0.8, 1.45, 1.75),
+    new THREE.BoxGeometry(CONFIG.platenLength - 0.2, 1.35, 1.55),
     hitMat
   );
   carriageBodyHit.position.set(0, 0.25, -0.20);
   carriageSys.carriageGroup.add(carriageBodyHit);
   registerControlMesh(carriageBodyHit, 'carriageBody');
 
-  // Priority table so smaller precision levers/knobs/margin-stops win over large overlapping paper/carriage boxes
+  // Platen knobs are priority 0 so they win over every other control
   function getControlPriority(cid) {
+    if (cid === 'platenKnobLeft' || cid === 'platenKnobRight') return 0;
     if (cid.startsWith('key:')) return 1;
     if (cid === 'marginStopLeft' || cid === 'marginStopRight') return 1;
     if (cid === 'paperReleaseLever' || cid === 'ribbonSwitchLever') return 1;
     if (cid === 'carriageReturnLever') return 2;
-    if (cid === 'platenKnobLeft' || cid === 'platenKnobRight') return 2;
     if (cid === 'paperSheet') return 3;
     if (cid === 'platenRoller') return 4;
     if (cid === 'carriageBody') return 5;
@@ -205,23 +209,40 @@ export function createControlsSystem({
   function pickControl(e) {
     updatePointerNDC(e);
     raycaster.setFromCamera(pointerNDC, camera);
-    const hits = raycaster.intersectObjects(controlMeshes, false);
-    if (hits.length === 0) return null;
+    const rawHits = raycaster.intersectObjects(controlMeshes, false);
+    if (rawHits.length === 0) return null;
 
-    let bestHit = null;
-    let bestPrio = 999;
-
-    for (let i = 0; i < hits.length; i++) {
-      const h = hits[i];
+    const validHits = [];
+    for (let i = 0; i < rawHits.length; i++) {
+      const h = rawHits[i];
       const cid = h.object.userData.controlId;
       if (!cid) continue;
       if (cid === 'paperSheet' && !paperSys.isSheetPresent()) continue;
+      validHits.push(h);
+    }
+    if (validHits.length === 0) return null;
 
-      const prio = getControlPriority(cid);
-      if (prio < bestPrio) {
-        bestPrio = prio;
-        bestHit = h;
-        if (prio === 1) break;
+    // If a platen knob (priority 0) is anywhere in the raycast hits, it wins immediately
+    for (let i = 0; i < validHits.length; i++) {
+      const cid = validHits[i].object.userData.controlId;
+      if (cid === 'platenKnobLeft' || cid === 'platenKnobRight') {
+        return validHits[i];
+      }
+    }
+
+    // Otherwise, among hits within 0.15 world units of the nearest hit, prefer lowest priority number, tie-break by distance
+    const minDistance = validHits[0].distance;
+    let bestHit = validHits[0];
+    let bestPrio = getControlPriority(bestHit.object.userData.controlId);
+
+    for (let i = 1; i < validHits.length; i++) {
+      const h = validHits[i];
+      if (h.distance <= minDistance + 0.15) {
+        const prio = getControlPriority(h.object.userData.controlId);
+        if (prio < bestPrio || (prio === bestPrio && h.distance < bestHit.distance)) {
+          bestPrio = prio;
+          bestHit = h;
+        }
       }
     }
     return bestHit;
@@ -234,7 +255,6 @@ export function createControlsSystem({
     }
   }
 
-  // Hover cursor feedback on desktop (`grab` over grabbable parts, `grabbing` while dragging)
   rendererDom.addEventListener('pointermove', (e) => {
     if (activeDrag && activeDrag.pointerId === e.pointerId) {
       handleDragMove(e);
@@ -281,14 +301,13 @@ export function createControlsSystem({
       lastY: e.clientY,
       downTime: performance.now(),
       totalDist: 0,
-      gestureMode: null, // 'roll' | 'slide' | 'pullOut'
+      gestureMode: null,
       pullArmed: carriageSys.state.paperReleased,
       pullRatio: 0,
       holdTimer: null,
       didTriggerAction: false
     };
 
-    // Arm pull-to-remove after a 250ms hold on the paper sheet (even when Paper Release is OFF)
     if (cid === 'paperSheet' && paperSys.isSheetPresent()) {
       if (carriageSys.state.paperReleased) {
         showPullToast(true);
@@ -302,7 +321,6 @@ export function createControlsSystem({
       }
     }
 
-    // Immediate response for keys & toggle levers on pointerdown
     if (cid.startsWith('key:')) {
       const ctrl = hit.object.userData.keyController;
       if (!ctrl) return;
@@ -344,9 +362,9 @@ export function createControlsSystem({
     const totalDy = e.clientY - activeDrag.startY;
     const cid = activeDrag.controlId;
 
-    // 1. Platen Knobs & Platen Roller: 1:1 continuous vertical rotation + fractional paper scroll
+    // 1. Platen Knobs & Platen Roller: 1:1 continuous rotation (~26px per line) + continuous paper scroll
     if (cid === 'platenKnobLeft' || cid === 'platenKnobRight' || cid === 'platenRoller') {
-      if (!paperSys.isSheetPresent()) {
+      if (cid === 'platenRoller' && !paperSys.isSheetPresent()) {
         if (activeDrag.totalDist > 10 && !activeDrag.didTriggerAction) {
           activeDrag.didTriggerAction = true;
           onRemoveOrInsertPaper('insert');
@@ -361,8 +379,8 @@ export function createControlsSystem({
       if (activeDrag.gestureMode === 'slide') {
         onCarriageSlideContinuous(dx);
         activeDrag.didTriggerAction = true;
-      } else if (activeDrag.totalDist > 2) {
-        // Dragging UP (dy < 0) = positive deltaLines (winds paper UP)
+      } else if (Math.abs(dy) > 0) {
+        // Dragging UP (dy < 0) = positive deltaLines (winds paper UP, line number increases)
         const deltaLines = -dy / 26.0;
         onPlatenLineFeed(deltaLines, false);
         activeDrag.didTriggerAction = true;
@@ -372,14 +390,14 @@ export function createControlsSystem({
 
     // 2. Carriage Body: continuous horizontal carriage slide
     if (cid === 'carriageBody') {
-      if (activeDrag.totalDist > 3) {
+      if (activeDrag.totalDist > 2) {
         onCarriageSlideContinuous(dx);
         activeDrag.didTriggerAction = true;
       }
       return;
     }
 
-    // 3 & 4. Paper Sheet Gestures: distinguish by first movement & hold state
+    // 3 & 4. Paper Sheet Gestures
     if (cid === 'paperSheet') {
       if (!activeDrag.gestureMode && activeDrag.totalDist > 7) {
         clearHoldTimer(activeDrag);
@@ -388,14 +406,12 @@ export function createControlsSystem({
           activeDrag.gestureMode = 'slide';
           showPullToast(false);
         } else {
-          // Vertical movement on paper: pull-out if paper release is ON or held >= 250ms and dragging UP
           const isPullUp = totalDy < 0 && (carriageSys.state.paperReleased || activeDrag.pullArmed || heldMs >= 250);
           activeDrag.gestureMode = isPullUp ? 'pullOut' : 'roll';
           if (isPullUp) showPullToast(true);
         }
       }
 
-      // Also upgrade a vertical roll to pull-out if user held >=250ms and dragged up more than 40px
       if (
         activeDrag.gestureMode === 'roll' &&
         (performance.now() - activeDrag.downTime) >= 250 &&
@@ -410,13 +426,11 @@ export function createControlsSystem({
         activeDrag.didTriggerAction = true;
       } else if (activeDrag.gestureMode === 'pullOut') {
         const pullPx = Math.max(0, -totalDy);
-        // Full sheet height on screen corresponds to ~220px; 25% threshold is ~55px (pullRatio >= 0.25)
         const pullRatio = pullPx / 220.0;
         activeDrag.pullRatio = pullRatio;
         paperSys.setPullOutOffset(pullRatio);
         activeDrag.didTriggerAction = true;
 
-        // If pulled past 45% during the drag, fly out immediately
         if (pullRatio >= 0.45 && paperSys.getSheetStatus() !== 'ejecting') {
           showPullToast(false);
           onRemoveOrInsertPaper('eject');
@@ -465,7 +479,6 @@ export function createControlsSystem({
     const cid = activeDrag.controlId;
     carriageSys.state.returnLeverDragSwing = 0;
 
-    // Finalize continuous drag gestures on pointer release
     if (activeDrag.didTriggerAction) {
       if (
         cid === 'platenKnobLeft' ||
@@ -487,7 +500,6 @@ export function createControlsSystem({
         }
       }
     } else if (activeDrag.totalDist < 12) {
-      // Handle quick taps
       if (cid === 'carriageReturnLever') {
         onCarriageReturn();
       } else if (cid === 'platenKnobLeft' || cid === 'platenKnobRight') {
