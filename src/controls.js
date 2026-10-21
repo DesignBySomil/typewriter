@@ -140,7 +140,7 @@ export function createControlsSystem({
   carriageSys.paperReleaseLeverGroup.add(prLeverHit);
   registerControlMesh(prLeverHit, 'paperReleaseLever');
 
-  // 8. Full-Length Platen Roller Hit Cylinder, Full Paper Sheet Hit Box, and Carriage Body Hit Meshes
+  // 8. Full-Length Platen Roller Hit Cylinder, Slimmed Paper Sheet Hit Box, and Carriage Body Hit Meshes
   const platenHitGeo = new THREE.CylinderGeometry(CONFIG.platenRadius * 1.55, CONFIG.platenRadius * 1.55, CONFIG.platenLength - 0.3, 20);
   platenHitGeo.rotateZ(Math.PI / 2);
   const platenHitMesh = new THREE.Mesh(platenHitGeo, hitMat);
@@ -148,11 +148,12 @@ export function createControlsSystem({
   registerControlMesh(platenHitMesh, 'platenRoller');
   registerControlMesh(carriageSys.platenMesh, 'platenRoller');
 
+  // Slimmed depth (0.36 instead of 1.35) so paperHitBox hugs the visible sheet without overhanging the scale rail
   const paperHitBox = new THREE.Mesh(
-    new THREE.BoxGeometry(CONFIG.paperWidth + 0.3, CONFIG.paperSheetHeight + 0.9, 1.35),
+    new THREE.BoxGeometry(CONFIG.paperWidth + 0.2, CONFIG.paperSheetHeight + 0.5, 0.36),
     hitMat
   );
-  paperHitBox.position.set(0, 1.65, -0.35);
+  paperHitBox.position.set(0, 1.72, -0.08);
   paperHitBox.rotation.x = -0.21;
   carriageSys.carriageGroup.add(paperHitBox);
   registerControlMesh(paperSys.paperMesh, 'paperSheet');
@@ -170,17 +171,19 @@ export function createControlsSystem({
   carriageSys.carriageGroup.add(carriageBodyHit);
   registerControlMesh(carriageBodyHit, 'carriageBody');
 
-  // Platen knobs are priority 0 so they win over every other control
   function getControlPriority(cid) {
     if (cid === 'platenKnobLeft' || cid === 'platenKnobRight') return 0;
-    if (cid.startsWith('key:')) return 1;
     if (cid === 'marginStopLeft' || cid === 'marginStopRight') return 1;
-    if (cid === 'paperReleaseLever' || cid === 'ribbonSwitchLever') return 1;
-    if (cid === 'carriageReturnLever') return 2;
-    if (cid === 'paperSheet') return 3;
-    if (cid === 'platenRoller') return 4;
-    if (cid === 'carriageBody') return 5;
-    return 6;
+    if (
+      cid === 'carriageReturnLever' ||
+      cid === 'paperReleaseLever' ||
+      cid === 'ribbonSwitchLever'
+    ) return 2;
+    if (cid.startsWith('key:')) return 3;
+    if (cid === 'paperSheet') return 4;
+    if (cid === 'platenRoller') return 5;
+    if (cid === 'carriageBody') return 6;
+    return 7;
   }
 
   function isGrabbableControl(cid) {
@@ -222,7 +225,7 @@ export function createControlsSystem({
     }
     if (validHits.length === 0) return null;
 
-    // If a platen knob (priority 0) is anywhere in the raycast hits, it wins immediately
+    // 1. Platen knobs anywhere in validHits win first (nearest first since raycaster sorts by distance)
     for (let i = 0; i < validHits.length; i++) {
       const cid = validHits[i].object.userData.controlId;
       if (cid === 'platenKnobLeft' || cid === 'platenKnobRight') {
@@ -230,7 +233,27 @@ export function createControlsSystem({
       }
     }
 
-    // Otherwise, among hits within 0.15 world units of the nearest hit, prefer lowest priority number, tie-break by distance
+    // 2. Margin stops anywhere in validHits win next (nearest first)
+    for (let i = 0; i < validHits.length; i++) {
+      const cid = validHits[i].object.userData.controlId;
+      if (cid === 'marginStopLeft' || cid === 'marginStopRight') {
+        return validHits[i];
+      }
+    }
+
+    // 3. Levers (carriageReturnLever, paperReleaseLever, ribbonSwitchLever) anywhere in validHits win next (nearest first)
+    for (let i = 0; i < validHits.length; i++) {
+      const cid = validHits[i].object.userData.controlId;
+      if (
+        cid === 'carriageReturnLever' ||
+        cid === 'paperReleaseLever' ||
+        cid === 'ribbonSwitchLever'
+      ) {
+        return validHits[i];
+      }
+    }
+
+    // 4. Fallback: among hits within 0.15 world units of the nearest hit, prefer lowest priority number, tie-break by distance
     const minDistance = validHits[0].distance;
     let bestHit = validHits[0];
     let bestPrio = getControlPriority(bestHit.object.userData.controlId);
@@ -380,7 +403,6 @@ export function createControlsSystem({
         onCarriageSlideContinuous(dx);
         activeDrag.didTriggerAction = true;
       } else if (Math.abs(dy) > 0) {
-        // Dragging UP (dy < 0) = positive deltaLines (winds paper UP, line number increases)
         const deltaLines = -dy / 26.0;
         onPlatenLineFeed(deltaLines, false);
         activeDrag.didTriggerAction = true;
