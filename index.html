@@ -120,9 +120,9 @@
     <span id="compact-key">KEY: -</span>
     <span id="compact-bell">BELL: 38</span>
     <div class="compact-actions">
-      <button id="btn-kb-m" class="hud-btn" type="button">KB</button>
-      <button id="btn-sheet-m" class="hud-btn" type="button">SHEET</button>
-      <button id="btn-print-save-m" class="hud-btn" type="button">SAVE</button>
+      <button id="btn-kb-m" class="hud-btn" type="button" aria-label="Keyboard" title="Keyboard">&#9000;</button>
+      <button id="btn-sheet-m" class="hud-btn" type="button" aria-label="New sheet" title="New sheet">&#9636;</button>
+      <button id="btn-print-save-m" class="hud-btn" type="button" aria-label="Save" title="Save">&#8681;</button>
     </div>
   </div>
 
@@ -135,6 +135,15 @@
   <!-- Hidden input for mobile virtual keyboard support -->
   <input id="mobile-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
 
+  <script>
+  (function(){var vv=window.visualViewport;if(!vv)return;
+  function fit(){var c=document.getElementById('webgl-container');if(!c)return;
+    var full=Math.max(window.innerHeight,screen.height&&window.innerWidth<820?window.innerHeight:0);
+    var kb=vv.height<window.innerHeight*0.8;
+    if(kb){var sh=(window.innerHeight-vv.height)*0.55;c.style.transform='translateY('+(vv.offsetTop-sh)+'px)';document.body.classList.add('kb-up');}
+    else{c.style.transform='';document.body.classList.remove('kb-up');}}
+  vv.addEventListener('resize',fit);vv.addEventListener('scroll',fit);})();
+  </script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
