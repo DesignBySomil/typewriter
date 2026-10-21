@@ -57,7 +57,12 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     const isPortrait = (window.innerWidth / Math.max(1, window.innerHeight)) < 0.92;
     const centerCol = (CONFIG.maxCols - 1) * 0.5;
     if (isPortrait) {
-      return THREE.MathUtils.clamp((10 - col) * 0.025, -0.28, 0.24);
+      // True 1:1 slide: bring the typed column under the strike point (matches paper.js portrait spacing)
+      const defaultMin = Math.floor((CONFIG.maxCols - CONFIG.portraitCols) * 0.5);
+      const relCol = Math.max(0, col - defaultMin);
+      const stepPx = (CONFIG.paperCanvasW - 220) / CONFIG.portraitCols;
+      const px = 110 + relCol * stepPx;
+      return -((px / CONFIG.paperCanvasW) - 0.5) * CONFIG.paperWidth;
     }
     return (centerCol - col) * CONFIG.charStepWorld;
   }
