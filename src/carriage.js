@@ -12,13 +12,13 @@ function createRibbedKnob(knobPlasticMat, chromeMat, darkSteelMat, sideSign = 1)
   mainCyl.castShadow = true;
   group.add(mainCyl);
 
-  const ribGeo = new THREE.BoxGeometry(0.40, 0.030, 0.042);
+  const ribGeo = new THREE.BoxGeometry(0.42, 0.038, 0.052);
   const numRibs = 18;
   for (let i = 0; i < numRibs; i++) {
     const angle = (i / numRibs) * Math.PI * 2;
-    const mat = i % 6 === 0 ? darkSteelMat : knobPlasticMat;
+    const mat = i % 3 === 0 ? darkSteelMat : knobPlasticMat;
     const rib = new THREE.Mesh(ribGeo, mat);
-    rib.position.set(0, Math.cos(angle) * 0.398, Math.sin(angle) * 0.398);
+    rib.position.set(0, Math.cos(angle) * 0.402, Math.sin(angle) * 0.402);
     rib.rotation.x = -angle;
     group.add(rib);
   }
@@ -32,11 +32,11 @@ function createRibbedKnob(knobPlasticMat, chromeMat, darkSteelMat, sideSign = 1)
   group.add(cap);
 
   const indexPin = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.045, 0.045, 0.05, 12),
+    new THREE.CylinderGeometry(0.055, 0.055, 0.06, 12),
     darkSteelMat
   );
   indexPin.rotation.z = Math.PI / 2;
-  indexPin.position.set(sideSign * 0.23, 0.12, 0.08);
+  indexPin.position.set(sideSign * 0.23, 0.13, 0.09);
   group.add(indexPin);
 
   return group;
@@ -55,7 +55,7 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
 
   function computeCarriageXForCol(col) {
     const isPortrait = (window.innerWidth / Math.max(1, window.innerHeight)) < 0.92;
-    const centerCol = (CONFIG.maxCols - 1) * 0.5; // 22.5
+    const centerCol = (CONFIG.maxCols - 1) * 0.5;
     if (isPortrait) {
       return THREE.MathUtils.clamp((10 - col) * 0.025, -0.28, 0.24);
     }
@@ -63,7 +63,7 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   }
 
   function colToLocalPaperX(col) {
-    const centerCol = (CONFIG.maxCols - 1) * 0.5; // 22.5
+    const centerCol = (CONFIG.maxCols - 1) * 0.5;
     return (col - centerCol) * CONFIG.charStepWorld;
   }
 
@@ -87,6 +87,17 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
   platenMesh.castShadow = true;
   platenMesh.receiveShadow = true;
   platenRollerGroup.add(platenMesh);
+
+  // Subtle longitudinal witness grooves along the platen & end caps so 1:1 roller rotation is visibly unmistakable
+  const grooveGeo = new THREE.BoxGeometry(CONFIG.platenLength + 0.28, 0.018, 0.024);
+  for (let i = 0; i < 12; i++) {
+    const ang = (i / 12) * Math.PI * 2;
+    const groove = new THREE.Mesh(grooveGeo, i % 3 === 0 ? chromeMat : darkSteelMat);
+    const r = CONFIG.platenRadius + 0.004;
+    groove.position.set(0, Math.cos(ang) * r, Math.sin(ang) * r);
+    groove.rotation.x = -ang;
+    platenRollerGroup.add(groove);
+  }
 
   const capGeo = new THREE.CylinderGeometry(CONFIG.platenRadius * 1.03, CONFIG.platenRadius * 1.03, 0.14, 32);
   capGeo.rotateZ(Math.PI / 2);
@@ -233,9 +244,6 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     state.velX += overshootImpulse;
   }
 
-  /**
-   * Continuous 1:1 carriage slide during horizontal finger/mouse drag
-   */
   function setCarriageColContinuous(fractionalCol) {
     const x = computeCarriageXForCol(fractionalCol);
     state.targetX = x;
@@ -247,12 +255,8 @@ export function buildCarriageSystem(machineRoot, materials, clickableMeshes) {
     state.platenRecoilZ = -0.034;
   }
 
-  /**
-   * Rotates platen roller & knobs by `deltaLines`.
-   * When `immediate` is true (1:1 finger drag), rotates immediately without spring lag.
-   */
   function rotatePlatenByLines(deltaLines, immediate = false) {
-    const dAngle = -deltaLines * 0.55;
+    const dAngle = -deltaLines * 0.62;
     state.platenTargetRotX += dAngle;
     if (immediate) {
       state.platenCurrentRotX += dAngle;
