@@ -5,7 +5,7 @@ export const CONFIG = {
   maxCols: 46,
   portraitCols: 36,
   maxLinesPerPage: 25,      // 25 lines per page (0..24)
-  MAX_LINE: 24,
+  MAX_LINE: 10,
   LINE0_Y: 250,             // Line 0 drawn near the top of the paper texture (y = 250px)
   bellOffset: 8,            // Bell rings 8 chars before active right margin
   charStepWorld: 0.185,     // World units carriage translates LEFT per character
