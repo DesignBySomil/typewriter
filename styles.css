@@ -461,3 +461,22 @@ body.hud-hidden #print-save-panel {
   }
   #btn-kb-big.mobile-kb-cta:active { background: #c29a5e; }
 }
+
+/* Quiet mobile chrome: no hint strip, no readout, no big CTA; small icon row only */
+@media (max-width: 820px), (pointer: coarse) {
+  #btn-kb-big.mobile-kb-cta, #intro-prompt { display: none !important; }
+  #compact-col, #compact-line, #compact-key, #compact-bell { display: none; }
+  #compact-telemetry {
+    left: auto; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    padding: 0; background: transparent; border: 0; overflow: visible;
+  }
+  .compact-actions { gap: 8px; }
+  .compact-actions .hud-btn {
+    width: 40px; height: 40px; padding: 0; font-size: 18px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(10, 9, 8, 0.45); color: rgba(244, 236, 224, 0.8);
+    border: 1px solid rgba(244, 236, 224, 0.25); border-radius: 50%;
+  }
+  #print-save-panel { bottom: 60px; }
+}
+body.kb-up #hud-overlay, body.kb-up #compact-telemetry { display: none !important; }
