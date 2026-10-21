@@ -4,6 +4,11 @@ import { PAPER_VERTEX_SHADER, PAPER_FRAGMENT_SHADER } from './shaders/paper.js';
 
 const LINE0_Y = CONFIG.LINE0_Y || 250;
 const MAX_LINE = CONFIG.MAX_LINE || 24;
+// Total physical sheet arc-length (11.5 world units) so at Line 0 the top edge stands 2.95 units
+// above the platen (sTop = 4.10) AND at Line 24 (raised by 24 * 0.26 = 6.24 units, sTop = 10.34)
+// the bottom edge (sBot = 10.34 - 11.50 = -1.16) STILL stays tucked behind/below the platen with zero gap!
+const TOTAL_SHEET_LEN = 11.50;
+const LINE_STEP_WORLD = 0.26;
 
 export function createPaperSystem(carriageGroup) {
   const paperCanvas = document.createElement('canvas');
@@ -66,7 +71,9 @@ export function createPaperSystem(carriageGroup) {
   /**
    * Stamps a typewriter glyph onto the 2048x2048 CanvasTexture:
    * Line 0 is drawn near the top of the texture (LINE0_Y = 250px) and subsequent lines
-   * advance DOWNWARD (+paperLinePxY per line) so the page reads top-to-bottom in typing order!
+   * advance DOWNWARD (+paperLinePxY per line) so the page reads top-to-bottom in typing order,
+   * while the vertex shader slides the physical sheet up by `LINE_STEP_WORLD` per line so
+   * `currentCanvasLine` is always positioned right at the platen strike point (s = 1.02)!
    */
   function stampCharacter(char, col, _unusedOffset = 0, ribbonColor = 'black', absoluteLineId = 0) {
     if (sheetStatus === 'removed' || sheetStatus === 'ejecting') return;
@@ -164,8 +171,8 @@ export function createPaperSystem(carriageGroup) {
 
   /**
    * Continuous fractional or snapped line scrolling (clamped 0..MAX_LINE).
-   * When `snapToLine` is false (continuous 1:1 knob/roller drag), updates `scrollVCurrent`
-   * immediately so the sheet moves 1:1 with the user's finger.
+   * Drives `uScrollV` which physically feeds the entire paper mesh up/down over the curved platen
+   * in the vertex shader so even a completely blank sheet visibly rises and lowers as one piece!
    */
   function scrollByLines(deltaLines, snapToLine = false) {
     const lineStepV = CONFIG.paperLinePxY / CONFIG.paperCanvasH;
@@ -183,9 +190,6 @@ export function createPaperSystem(carriageGroup) {
     return currentCanvasLine;
   }
 
-  /**
-   * On pointer release after a continuous platen drag, eases smoothly to the nearest integer line
-   */
   function snapToNearestLine() {
     const lineStepV = CONFIG.paperLinePxY / CONFIG.paperCanvasH;
     currentCanvasLine = THREE.MathUtils.clamp(Math.round(currentCanvasLine), 0, MAX_LINE);
@@ -193,10 +197,6 @@ export function createPaperSystem(carriageGroup) {
     return currentCanvasLine;
   }
 
-  /**
-   * Continuous upward pull-out offset (`pullRatio` = 0..1+).
-   * Maps to `uInsertProgress = 1.0 + pullRatio` in the paper vertex shader.
-   */
   function setPullOutOffset(pullRatio) {
     if (sheetStatus === 'removed' || sheetStatus === 'ejecting') return;
     sheetStatus = 'pulling';
@@ -205,9 +205,6 @@ export function createPaperSystem(carriageGroup) {
     paperUniforms.uFeedWave.value = Math.min(1.0, pullRatio * 0.9);
   }
 
-  /**
-   * Drops the sheet smoothly back into its seat if pulled less than 25% of its height
-   */
   function settlePulledPaperBack() {
     if (sheetStatus === 'pulling') {
       sheetStatus = 'settling';
@@ -219,7 +216,11 @@ export function createPaperSystem(carriageGroup) {
     uTime: { value: 0 },
     uScrollV: { value: 0.0 },
     uFeedWave: { value: 0.0 },
-    uInsertProgress: { value: 0.0 },
+    uInsertProgress: { value: 1.0 },
+    uPaperRadius: { value: CONFIG.platenRadius + 0.022 },
+    uPaperWidth: { value: CONFIG.paperWidth },
+    uTotalSheetLen: { value: TOTAL_SHEET_LEN },
+    uLineStepWorld: { value: LINE_STEP_WORLD },
     uLightDir: { value: new THREE.Vector3(-8.5, 11.5, 6.2).normalize() }
   };
 
@@ -230,40 +231,56 @@ export function createPaperSystem(carriageGroup) {
     fragmentShader: PAPER_FRAGMENT_SHADER
   });
 
-  function createCurvedPaperGeometry(width, heightSegments = 64) {
+  /**
+   * Builds a high-density 128-segment mesh whose vertices are dynamically slid along the curved
+   * platen path in `PAPER_VERTEX_SHADER` as `uScrollV` / `uInsertProgress` change.
+   * Initializes the CPU geometry at the Line 0 seated position so raycasting hits the visible
+   * 2.95-unit sheet above the platen immediately on load.
+   */
+  function createCurvedPaperGeometry(width, heightSegments = 128) {
     const geo = new THREE.PlaneGeometry(width, 1.0, 48, heightSegments);
     const posAttr = geo.attributes.position;
     const r = CONFIG.platenRadius + 0.022;
+    const wrapBottomLen = 0.86;
+    const wrapTopLen = 0.29;
+    const tableStartS = wrapBottomLen + wrapTopLen; // 1.15
+    const sTopAtLine0 = 1.15 + 2.95; // 4.10
 
     for (let i = 0; i < posAttr.count; i++) {
       const vx = posAttr.getX(i);
       const u = posAttr.getY(i) + 0.5;
+      const s = sTopAtLine0 - (1.0 - u) * TOTAL_SHEET_LEN;
       let py = 0;
       let pz = 0;
 
-      if (u < 0.22) {
-        const t = u / 0.22;
+      if (s < 0.0) {
+        const d = -s;
+        const angle = -Math.PI * 0.52;
+        py = Math.sin(angle) * r - d * 0.85;
+        pz = Math.cos(angle) * r - d * 0.52;
+      } else if (s < wrapBottomLen) {
+        const t = s / wrapBottomLen;
         const angle = -Math.PI * 0.52 * (1.0 - t);
         py = Math.sin(angle) * r;
         pz = Math.cos(angle) * r;
-      } else if (u < 0.30) {
-        const t = (u - 0.22) / 0.08;
+      } else if (s < tableStartS) {
+        const t = (s - wrapBottomLen) / wrapTopLen;
         const angle = t * (Math.PI * 0.21);
         py = Math.sin(angle) * r;
         pz = Math.cos(angle) * r;
       } else {
-        const t = (u - 0.30) / 0.70;
+        const distAbove = s - tableStartS;
         const baseAngle = Math.PI * 0.21;
         const startY = Math.sin(baseAngle) * r;
         const startZ = Math.cos(baseAngle) * r;
-        const sheetLen = CONFIG.paperSheetHeight;
+        const hNorm = Math.min(1.0, Math.max(0.0, distAbove / 2.95));
 
-        const topCurlZ = Math.pow(t, 2.6) * 0.38 - Math.sin(t * Math.PI) * 0.08;
-        const topCurlY = -Math.pow(t, 3.2) * 0.14;
-        const edgeLiftZ = Math.pow(vx / (width * 0.5), 2.0) * Math.pow(t, 1.8) * 0.09;
+        const topCurlZ = Math.pow(hNorm, 2.4) * 0.24 - Math.sin(hNorm * Math.PI) * 0.05;
+        const topCurlY = -Math.pow(hNorm, 3.0) * 0.10;
+        const edgeLiftZ = Math.pow(vx / (width * 0.5), 2.0) * Math.pow(hNorm, 1.8) * 0.075;
 
-        py = startY + t * sheetLen * Math.cos(0.21) + topCurlY;
-        pz = startZ - t * sheetLen * Math.sin(0.21) - topCurlZ + edgeLiftZ;
+        py = startY + distAbove * Math.cos(0.20) + topCurlY;
+        pz = startZ - distAbove * Math.sin(0.20) - topCurlZ + edgeLiftZ;
       }
 
       posAttr.setY(i, py);
@@ -271,10 +288,15 @@ export function createPaperSystem(carriageGroup) {
     }
 
     geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    if (geo.boundingSphere) {
+      geo.boundingSphere.radius += 6.0;
+    }
     return geo;
   }
 
   const paperMesh = new THREE.Mesh(createCurvedPaperGeometry(CONFIG.paperWidth), paperShaderMaterial);
+  paperMesh.frustumCulled = false;
   paperMesh.castShadow = true;
   paperMesh.receiveShadow = true;
   carriageGroup.add(paperMesh);
@@ -311,10 +333,12 @@ export function createPaperSystem(carriageGroup) {
     paperUniforms.uTime.value = elapsedTotal;
 
     if (sheetStatus === 'inserting') {
-      insertAnimProgress = Math.min(1.0, insertAnimProgress + dt * 1.45);
+      insertAnimProgress = Math.min(1.0, insertAnimProgress + dt * 1.65);
       const eased = 1.0 - Math.pow(1.0 - insertAnimProgress, 3.0);
       paperUniforms.uInsertProgress.value = eased;
       if (insertAnimProgress >= 1.0) {
+        insertAnimProgress = 1.0;
+        paperUniforms.uInsertProgress.value = 1.0;
         sheetStatus = 'seated';
       }
     } else if (sheetStatus === 'settling') {
