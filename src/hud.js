@@ -101,7 +101,12 @@ export function createHudSystem(camera, carriageGroup) {
       hudValBell.style.fill = '#d8af72';
     }
 
-    const lineStr = String(telemetry.pageLine + 1).padStart(2, '0');
+    const rawLine = (typeof telemetry.fractionalLine === 'number' ? telemetry.fractionalLine : telemetry.pageLine) + 1;
+    const isFractionalLine = Math.abs(rawLine - Math.round(rawLine)) > 0.03;
+    const lineStr = isFractionalLine
+      ? rawLine.toFixed(1).padStart(4, '0')
+      : String(Math.round(rawLine)).padStart(2, '0');
+
     hudValLine.textContent = telemetry.paperReleased
       ? `LINE ${lineStr} [FREE]`
       : `LINE ${lineStr} / ${CONFIG.maxLinesPerPage}`;
