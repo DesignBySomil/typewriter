@@ -148,12 +148,12 @@ export function createControlsSystem({
   registerControlMesh(platenHitMesh, 'platenRoller');
   registerControlMesh(carriageSys.platenMesh, 'platenRoller');
 
-  // Slimmed depth (0.36 instead of 1.35) so paperHitBox hugs the visible sheet without overhanging the scale rail
+  // Slimmed depth (0.36) so paperHitBox hugs the visible sheet without overhanging the scale rail
   const paperHitBox = new THREE.Mesh(
-    new THREE.BoxGeometry(CONFIG.paperWidth + 0.2, CONFIG.paperSheetHeight + 0.5, 0.36),
+    new THREE.BoxGeometry(CONFIG.paperWidth + 0.2, CONFIG.paperSheetHeight + 2.2, 0.36),
     hitMat
   );
-  paperHitBox.position.set(0, 1.72, -0.08);
+  paperHitBox.position.set(0, 2.25, -0.18);
   paperHitBox.rotation.x = -0.21;
   carriageSys.carriageGroup.add(paperHitBox);
   registerControlMesh(paperSys.paperMesh, 'paperSheet');
@@ -225,7 +225,7 @@ export function createControlsSystem({
     }
     if (validHits.length === 0) return null;
 
-    // 1. Platen knobs anywhere in validHits win first (nearest first since raycaster sorts by distance)
+    // 1. Platen knobs anywhere in validHits win first (nearest first)
     for (let i = 0; i < validHits.length; i++) {
       const cid = validHits[i].object.userData.controlId;
       if (cid === 'platenKnobLeft' || cid === 'platenKnobRight') {
@@ -241,7 +241,7 @@ export function createControlsSystem({
       }
     }
 
-    // 3. Levers (carriageReturnLever, paperReleaseLever, ribbonSwitchLever) anywhere in validHits win next (nearest first)
+    // 3. Levers anywhere in validHits win next (nearest first)
     for (let i = 0; i < validHits.length; i++) {
       const cid = validHits[i].object.userData.controlId;
       if (
@@ -385,7 +385,7 @@ export function createControlsSystem({
     const totalDy = e.clientY - activeDrag.startY;
     const cid = activeDrag.controlId;
 
-    // 1. Platen Knobs & Platen Roller: 1:1 continuous rotation (~26px per line) + continuous paper scroll
+    // 1. Platen Knobs & Platen Roller: 1:1 continuous rotation (~26px per line) + continuous paper feed
     if (cid === 'platenKnobLeft' || cid === 'platenKnobRight' || cid === 'platenRoller') {
       if (cid === 'platenRoller' && !paperSys.isSheetPresent()) {
         if (activeDrag.totalDist > 10 && !activeDrag.didTriggerAction) {
@@ -419,7 +419,8 @@ export function createControlsSystem({
       return;
     }
 
-    // 3 & 4. Paper Sheet Gestures
+    // 3 & 4. Paper Sheet Gestures: plain vertical drag only feeds the paper;
+    // ejects only after a deliberate 250ms hold-and-pull OR a long upward pull when paper release lever is ON.
     if (cid === 'paperSheet') {
       if (!activeDrag.gestureMode && activeDrag.totalDist > 7) {
         clearHoldTimer(activeDrag);
@@ -522,6 +523,8 @@ export function createControlsSystem({
         }
       }
     } else if (activeDrag.totalDist < 12) {
+      // Quick tap behavior: knob tap feeds +/-1 line; empty platen tap inserts fresh sheet;
+      // plain tap on seated paper feeds +1 line (never accidentally ejects on a simple tap!)
       if (cid === 'carriageReturnLever') {
         onCarriageReturn();
       } else if (cid === 'platenKnobLeft' || cid === 'platenKnobRight') {
@@ -531,7 +534,11 @@ export function createControlsSystem({
         const dir = activeDrag.hitPointWorld.y >= knobCenterWorld.y ? 1 : -1;
         onPlatenLineFeed(dir, true);
       } else if (cid === 'paperSheet') {
-        onRemoveOrInsertPaper('toggle');
+        if (!paperSys.isSheetPresent()) {
+          onRemoveOrInsertPaper('insert');
+        } else {
+          onPlatenLineFeed(1, true);
+        }
       } else if (cid === 'platenRoller' && !paperSys.isSheetPresent()) {
         onRemoveOrInsertPaper('insert');
       }
