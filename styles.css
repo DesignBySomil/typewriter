@@ -508,3 +508,23 @@ body.kb-up #hud-overlay, body.kb-up #compact-telemetry { display: none !importan
 @media (max-width: 760px) {
   #print-save-panel { top: 50%; bottom: auto; left: 50%; right: auto; width: calc(100vw - 24px); }
 }
+
+/* Print / Save: larger modal with dark overlay, two buttons */
+#export-backdrop {
+  position: fixed; inset: 0; z-index: 29;
+  background: rgba(4, 3, 2, 0.78);
+  transition: opacity 0.2s ease;
+}
+#export-backdrop.hidden { opacity: 0; pointer-events: none; }
+#print-save-panel {
+  width: min(820px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  z-index: 31;
+  padding: 16px;
+}
+#export-preview { max-height: min(70vh, 820px); }
+.export-panel-body .export-action-btn { flex: 1 1 200px; }
+@media (max-width: 760px) {
+  #print-save-panel { width: calc(100vw - 16px); padding: 12px; }
+  #export-preview { max-height: 62vh; }
+}
