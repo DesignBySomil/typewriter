@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>OLIVETTI // LETTERA 32 — Interactive 3D Mechanical Typewriter</title>
+  <link rel="icon" href="https://somiljain.com/home/assets/bRSSLNwJFPHa70scxuQ219zXuw.png" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="https://somiljain.com/home/assets/RsmqxPyZiTdTY5S7eQHBNQ6ou68.png" media="(prefers-color-scheme: dark)">
+  <link rel="apple-touch-icon" href="https://somiljain.com/home/assets/RsmqxPyZiTdTY5S7eQHBNQ6ou68.png">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Special+Elite&display=swap" rel="stylesheet" />
@@ -37,6 +40,7 @@
     </div>
   </header>
 
+  <div id="export-backdrop" class="hidden"></div>
   <!-- PRINT / SAVE Export Modal Panel -->
   <div id="print-save-panel" class="export-panel hidden" role="dialog" aria-label="Print or Save Page">
     <div class="export-panel-header">
@@ -47,7 +51,6 @@
     <div class="export-panel-body">
       <button id="btn-export-png" class="export-action-btn">Download PNG</button>
       <button id="btn-export-pdf" class="export-action-btn">Download PDF</button>
-      <button id="btn-export-print" class="export-action-btn">Print Page</button>
     </div>
   </div>
 
