@@ -85,6 +85,11 @@ export function createExportSystem(paperSys) {
     return outCanvas;
   }
 
+  function renderPreview(img) {
+    if (!img) return;
+    img.src = renderFullPageCanvas().toDataURL('image/jpeg', 0.85);
+  }
+
   function downloadPNG() {
     const canvas = renderFullPageCanvas();
     canvas.toBlob((blob) => {
@@ -229,6 +234,7 @@ export function createExportSystem(paperSys) {
 
   return {
     renderFullPageCanvas,
+    renderPreview,
     downloadPNG,
     downloadPDF,
     printPage
