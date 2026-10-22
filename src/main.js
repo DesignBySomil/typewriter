@@ -478,6 +478,14 @@ function toggleExportPanel() {
   printSavePanel.classList.toggle('hidden');
 }
 
+const exportBackdrop = document.getElementById('export-backdrop');
+if (printSavePanel && exportBackdrop) {
+  new MutationObserver(() => {
+    exportBackdrop.classList.toggle('hidden', printSavePanel.classList.contains('hidden'));
+  }).observe(printSavePanel, { attributes: true, attributeFilter: ['class'] });
+  exportBackdrop.addEventListener('click', closeExportPanel);
+}
+
 document.getElementById('btn-print-save')?.addEventListener('click', (e) => {
   e.stopPropagation();
   toggleExportPanel();
