@@ -530,6 +530,79 @@ const inputSys = createInputSystem({
   onCloseExportPanel: closeExportPanel
 });
 
+// ---- AUTO: types a short note on a fresh sheet; click again to stop ----
+const AUTO_TEXT = 'Hello.\n\nI am a typewriter.\nPress a key. I will put it on paper.';
+const autoBtn = document.getElementById('btn-auto');
+let autoToken = 0;
+let autoRunning = false;
+
+function setAutoUi(running) {
+  autoRunning = running;
+  if (!autoBtn) return;
+  autoBtn.textContent = running ? 'STOP' : 'AUTO';
+  autoBtn.classList.toggle('active', running);
+}
+
+function stopAuto() {
+  autoToken++;
+  setAutoUi(false);
+}
+
+function startAuto() {
+  const token = ++autoToken;
+  setAutoUi(true);
+  const alive = () => token === autoToken;
+  let i = 0;
+
+  const typeNext = () => {
+    if (!alive()) return;
+    if (i >= AUTO_TEXT.length) { setAutoUi(false); return; }
+    const ch = AUTO_TEXT[i++];
+    let delay = 95 + Math.random() * 70;
+    if (ch === ' ') {
+      handleSpace();
+    } else if (ch === '\n') {
+      handleCarriageReturn();
+      delay = 380;
+    } else {
+      const ctrl = keysSys.charToKeyMap.get(ch) || keysSys.charToKeyMap.get(ch.toLowerCase());
+      if (ctrl) handlePrintableKey(ctrl, ch);
+      if (ch === '.') delay = 260;
+    }
+    setTimeout(typeNext, delay);
+  };
+
+  const begin = () => {
+    if (!alive()) return;
+    typeNext();
+  };
+
+  // Always start on a fresh blank sheet so the note lands at the top of the page.
+  if (paperSys.isSheetPresent()) {
+    handleRemoveOrInsertPaper('eject');
+    setTimeout(() => {
+      if (!alive()) return;
+      handleRemoveOrInsertPaper('insert');
+      setTimeout(begin, 700);
+    }, 600);
+  } else {
+    handleRemoveOrInsertPaper('insert');
+    setTimeout(begin, 700);
+  }
+}
+
+autoBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (autoRunning) stopAuto(); else startAuto();
+});
+// Manual typing or New Sheet interrupts Auto.
+window.addEventListener('keydown', (e) => {
+  if (autoRunning && e.key !== 'Shift') stopAuto();
+}, true);
+document.getElementById('btn-sheet')?.addEventListener('click', () => { if (autoRunning) stopAuto(); }, true);
+document.getElementById('btn-sheet-m')?.addEventListener('click', () => { if (autoRunning) stopAuto(); }, true);
+window.typewriter.autoRunning = () => autoRunning;
+
 createControlsSystem({
   rendererDom: renderer.domElement,
   camera,
