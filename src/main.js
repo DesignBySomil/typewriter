@@ -342,6 +342,349 @@ function handlePlatenLineFeed(deltaLines, snapToLine = false) {
   } else {
     telemetry.fractionalLine = THREE.MathUtils.clamp(
       telemetry.fractionalLine + deltaLines,
+import { CONFIG } from './config.js';
+import { createSceneSystem } from './scene.js';
+import { buildMachineChassis } from './machine.js';
+import { buildKeysSystem } from './keys.js';
+import { buildTypebarsSystem } from './typebars.js';
+import { buildCarriageSystem } from './carriage.js';
+import { createPaperSystem } from './paper.js';
+import { TypewriterAudio } from './audio.js';
+import { createHudSystem } from './hud.js';
+import { createInputSystem } from './input.js';
+import { createControlsSystem } from './controls.js';
+import { createExportSystem } from './export.js';
+
+const container = document.getElementById('webgl-container');
+const sound = new TypewriterAudio();
+
+const sceneSys = createSceneSystem(container);
+const { renderer, scene, camera, bgScene, bgCamera, basketLight } = sceneSys;
+
+const chassis = buildMachineChassis(scene);
+const keysSys = buildKeysSystem(chassis.machineRoot, chassis.materials);
+
+const typebarsSys = buildTypebarsSystem(
+  chassis.machineRoot,
+  chassis.materials,
+  keysSys.printableControllers
+);
+
+const carriageSys = buildCarriageSystem(
+  chassis.machineRoot,
+  chassis.materials,
+  keysSys.clickableMeshes
+);
+
+const paperSys = createPaperSystem(carriageSys.carriageGroup);
+const hudSys = createHudSystem(camera, carriageSys.carriageGroup);
+const exportSys = createExportSystem(paperSys);
+
+window.typewriter = {
+  export: exportSys,
+  sheetStatus: () => paperSys.getSheetStatus()
+};
+
+const userMargins = {
+  leftCol: 0,
+  rightCol: CONFIG.maxCols
+};
+
+function getActiveColumnBounds() {
+  const isPortrait = (window.innerWidth / Math.max(1, window.innerHeight)) < 0.92;
+  const defaultMin = isPortrait ? Math.floor((CONFIG.maxCols - CONFIG.portraitCols) * 0.5) : 0;
+  const defaultMax = isPortrait ? defaultMin + CONFIG.portraitCols : CONFIG.maxCols;
+
+  const minCol = Math.max(defaultMin, userMargins.leftCol);
+  const maxCol = Math.min(defaultMax, userMargins.rightCol);
+  return {
+    minCol,
+    maxCol,
+    totalCols: Math.max(1, maxCol - minCol)
+  };
+}
+
+const initialBounds = getActiveColumnBounds();
+carriageSys.setMarginStopPositions(userMargins.leftCol, userMargins.rightCol);
+
+const telemetry = {
+  col: initialBounds.minCol,
+  fractionalCol: initialBounds.minCol,
+  pageLine: 0,
+  fractionalLine: 0,
+  totalLinesTyped: 0,
+  strikes: 0,
+  lastKeyLabel: '[NONE]',
+  shiftDown: false,
+  shiftLockedNext: false,
+  paperReleased: false,
+  marginLocked: false,
+  ribbonColor: 'black',
+  ribbonInk: 100.0,
+  spoolAngle: 0.0,
+  spoolDirection: 1,
+  vibratorLiftY: 0,
+  cameraShake: 0,
+  cameraNudgeY: 0,
+  lastStrikeTime: performance.now(),
+  strikeIntervals: [175, 160, 185, 150, 170, 155, 145, 165, 150, 160],
+  introDismissed: false
+};
+
+let lastPlatenTickLine = 0;
+
+carriageSys.advanceToCol(telemetry.col, 0);
+
+function dismissIntroPrompt() {
+  if (telemetry.introDismissed) return;
+  telemetry.introDismissed = true;
+  const el = document.getElementById('intro-prompt');
+  if (el) el.classList.add('hidden');
+}
+
+function updateShiftBasketVisuals() {
+  const active = telemetry.shiftDown || telemetry.shiftLockedNext;
+  typebarsSys.setBasketShift(active);
+  const sl = keysSys.keyMap.get('ShiftLeft');
+  const sr = keysSys.keyMap.get('ShiftRight');
+  if (sl) sl.targetPress = active ? 0.24 : 0;
+  if (sr) sr.targetPress = active ? 0.24 : 0;
+}
+
+function handlePrintableKey(ctrl, explicitChar = null) {
+  sound.init();
+  dismissIntroPrompt();
+
+  const bounds = getActiveColumnBounds();
+  if (telemetry.col < bounds.minCol) telemetry.col = bounds.minCol;
+
+  keysSys.depressKey(ctrl, 0.34);
+  sound.playKeyClack(0.95 + Math.random() * 0.1);
+
+  const isUpper = telemetry.shiftDown || telemetry.shiftLockedNext;
+  const charToPrint = explicitChar
+    ? (telemetry.shiftLockedNext ? explicitChar.toUpperCase() : explicitChar)
+    : (isUpper ? ctrl.upper : ctrl.lower);
+
+  if (telemetry.shiftLockedNext) {
+    telemetry.shiftLockedNext = false;
+    updateShiftBasketVisuals();
+  }
+
+  telemetry.lastKeyLabel = `'${charToPrint}'`;
+
+  if (telemetry.col >= bounds.maxCol) {
+    telemetry.marginLocked = true;
+    typebarsSys.triggerBarSwing(ctrl, true, null, telemetry.ribbonColor);
+    sound.playCarriageAdvanceClick(0.01);
+    hudSys.triggerBellFlash();
+    return;
+  }
+
+  const now = performance.now();
+  const dtMs = Math.min(500, Math.max(25, now - telemetry.lastStrikeTime));
+  telemetry.lastStrikeTime = now;
+  telemetry.strikeIntervals.push(dtMs);
+  if (telemetry.strikeIntervals.length > 18) telemetry.strikeIntervals.shift();
+
+  const targetCol = telemetry.col;
+  const targetLineId = telemetry.totalLinesTyped;
+  const targetRibbon = telemetry.ribbonColor;
+
+  if (paperSys.isSheetPresent()) {
+    paperSys.stampCharacter(charToPrint, targetCol, 0, targetRibbon, targetLineId);
+  }
+
+  telemetry.strikes++;
+  telemetry.ribbonInk = Math.max(10.0, 100.0 - telemetry.strikes * 0.035);
+  if (telemetry.strikes % 46 === 0) telemetry.spoolDirection *= -1;
+  telemetry.spoolAngle += 0.095 * telemetry.spoolDirection;
+  chassis.spoolGroupLeft.rotation.y = telemetry.spoolAngle;
+  chassis.spoolGroupRight.rotation.y = telemetry.spoolAngle;
+
+  telemetry.col = Math.min(bounds.maxCol, telemetry.col + 1);
+  telemetry.fractionalCol = telemetry.col;
+  carriageSys.advanceToCol(telemetry.col, -0.42);
+
+  if (telemetry.col === bounds.maxCol - CONFIG.bellOffset) {
+    sound.playMarginBell();
+    hudSys.triggerBellFlash();
+  }
+  if (telemetry.col >= bounds.maxCol) {
+    telemetry.marginLocked = true;
+  }
+
+  typebarsSys.triggerBarSwing(ctrl, false, () => {
+    carriageSys.triggerPlatenRecoil();
+    if (targetRibbon !== 'stencil') {
+      typebarsSys.triggerInkDustPuff(targetRibbon);
+    }
+    telemetry.vibratorLiftY = targetRibbon === 'red' ? 0.22 : (targetRibbon === 'stencil' ? 0.0 : 0.13);
+    telemetry.cameraShake = 0.012;
+    telemetry.cameraNudgeY = -0.020;
+    sound.playStrikeImpact();
+  }, targetRibbon);
+}
+
+function handleSpace() {
+  sound.init();
+  dismissIntroPrompt();
+
+  const bounds = getActiveColumnBounds();
+  const sc = keysSys.keyMap.get('Space');
+  keysSys.depressKey(sc, 0.26);
+  telemetry.lastKeyLabel = 'SPACE';
+  sound.playKeyClack(0.82);
+
+  if (telemetry.col >= bounds.maxCol) {
+    telemetry.marginLocked = true;
+    hudSys.triggerBellFlash();
+    return;
+  }
+
+  telemetry.col++;
+  telemetry.fractionalCol = telemetry.col;
+  carriageSys.advanceToCol(telemetry.col, -0.34);
+  sound.playCarriageAdvanceClick(0.02);
+
+  if (telemetry.col === bounds.maxCol - CONFIG.bellOffset) {
+    sound.playMarginBell();
+    hudSys.triggerBellFlash();
+  }
+  if (telemetry.col >= bounds.maxCol) {
+    telemetry.marginLocked = true;
+  }
+}
+
+function handleBackspace() {
+  sound.init();
+  dismissIntroPrompt();
+
+  const bounds = getActiveColumnBounds();
+  const bc = keysSys.keyMap.get('Backspace');
+  keysSys.depressKey(bc, 0.28);
+  telemetry.lastKeyLabel = 'BACK';
+  sound.playKeyClack(1.08);
+
+  if (telemetry.col > bounds.minCol) {
+    telemetry.col--;
+    telemetry.fractionalCol = telemetry.col;
+    telemetry.marginLocked = false;
+    carriageSys.advanceToCol(telemetry.col, 0.34);
+    sound.playCarriageAdvanceClick(0.02);
+  }
+}
+
+function handleCarriageReturn() {
+  sound.init();
+  dismissIntroPrompt();
+
+  const bounds = getActiveColumnBounds();
+  const ec = keysSys.keyMap.get('Enter');
+  keysSys.depressKey(ec, 0.28);
+  telemetry.lastKeyLabel = 'CR / LF';
+
+  const distanceRatio = Math.max(0.2, (telemetry.col - bounds.minCol) / bounds.totalCols);
+  sound.playCarriageReturn(distanceRatio);
+
+  telemetry.col = bounds.minCol;
+  telemetry.fractionalCol = bounds.minCol;
+  telemetry.marginLocked = false;
+  telemetry.totalLinesTyped++;
+
+  carriageSys.triggerCarriageReturnMotion(bounds.minCol);
+
+  if (!paperSys.isSheetPresent()) {
+    paperSys.triggerNewSheetInsert();
+    telemetry.pageLine = 0;
+    telemetry.fractionalLine = 0;
+    lastPlatenTickLine = 0;
+    return;
+  }
+
+  telemetry.pageLine++;
+  if (telemetry.pageLine >= CONFIG.maxLinesPerPage) {
+    telemetry.pageLine = 0;
+    telemetry.fractionalLine = 0;
+    lastPlatenTickLine = 0;
+    paperSys.triggerNewSheetInsert();
+  } else {
+    paperSys.rollCanvasTextUpOneLine();
+    paperSys.triggerLineFeedWave();
+    telemetry.fractionalLine = telemetry.pageLine;
+    lastPlatenTickLine = telemetry.pageLine;
+  }
+}
+
+function handleShiftChange(mode) {
+  if (mode === 'toggle') {
+    handleShiftToggleLock();
+    return;
+  }
+  const nextState = Boolean(mode);
+  if (telemetry.shiftDown === nextState) return;
+  telemetry.shiftDown = nextState;
+  updateShiftBasketVisuals();
+
+  if (nextState) {
+    sound.init();
+    sound.playKeyClack(0.76);
+  }
+}
+
+function handleShiftToggleLock() {
+  sound.init();
+  dismissIntroPrompt();
+  telemetry.shiftLockedNext = !telemetry.shiftLockedNext;
+  telemetry.lastKeyLabel = telemetry.shiftLockedNext ? 'SHIFT LOCK' : 'SHIFT UNLK';
+  sound.playKeyClack(0.78);
+  updateShiftBasketVisuals();
+}
+
+function handleCycleRibbonMode() {
+  sound.init();
+  dismissIntroPrompt();
+  const tc = keysSys.keyMap.get('Tab');
+  keysSys.depressKey(tc, 0.24);
+  sound.playKeyClack(1.12);
+
+  const order = ['black', 'red', 'stencil'];
+  const nextIdx = (order.indexOf(telemetry.ribbonColor) + 1) % order.length;
+  telemetry.ribbonColor = order[nextIdx];
+
+  chassis.setRibbonModeVisual(telemetry.ribbonColor);
+
+  const labelMap = { black: 'RIB: BLK', red: 'RIB: RED', stencil: 'RIB: STN' };
+  const btnMap = { black: 'RIBBON: BLK', red: 'RIBBON: RED', stencil: 'RIBBON: STN' };
+  telemetry.lastKeyLabel = labelMap[telemetry.ribbonColor];
+
+  const btnRibbon = document.getElementById('btn-ribbon');
+  if (btnRibbon) {
+    btnRibbon.textContent = btnMap[telemetry.ribbonColor];
+    btnRibbon.classList.toggle('warn', telemetry.ribbonColor === 'red');
+    btnRibbon.classList.toggle('active', telemetry.ribbonColor === 'stencil');
+  }
+}
+
+function handlePlatenLineFeed(deltaLines, snapToLine = false) {
+  sound.init();
+  dismissIntroPrompt();
+  carriageSys.rotatePlatenByLines(deltaLines, !snapToLine);
+
+  if (paperSys.isSheetPresent()) {
+    const newLine = paperSys.scrollByLines(deltaLines, snapToLine);
+    telemetry.fractionalLine = newLine;
+    const rounded = Math.round(newLine);
+    if (rounded !== lastPlatenTickLine) {
+      lastPlatenTickLine = rounded;
+      if (!telemetry.paperReleased || snapToLine) {
+        sound.playCarriageAdvanceClick(0.0);
+      }
+    }
+    telemetry.pageLine = Math.max(0, Math.min(CONFIG.maxLinesPerPage - 1, rounded));
+  } else {
+    telemetry.fractionalLine = THREE.MathUtils.clamp(
+      telemetry.fractionalLine + deltaLines,
       0,
       CONFIG.maxLinesPerPage - 1
     );
@@ -662,14 +1005,16 @@ function syncMuteUi(isMuted) {
 }
 function onMuteClick() {
   sound.init();
-  syncMuteUi(sound.toggleMute());
+  const isMuted = sound.toggleMute();
+  syncMuteUi(isMuted);
+  if (!isMuted) sound.playKeyClack(1.0); // audible confirmation that sound is on
 }
 btnMute?.addEventListener('click', onMuteClick);
 btnMuteM?.addEventListener('click', onMuteClick);
 
 // Unlock audio on the first real gesture (phones block audio until then).
 const unlockAudio = () => sound.init();
-['pointerdown', 'touchend', 'click', 'keydown'].forEach((ev) => {
+['pointerdown', 'touchstart', 'touchend', 'click', 'keydown'].forEach((ev) => {
   window.addEventListener(ev, unlockAudio, { passive: true });
 });
 
