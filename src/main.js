@@ -38,7 +38,8 @@ const hudSys = createHudSystem(camera, carriageSys.carriageGroup);
 const exportSys = createExportSystem(paperSys);
 
 window.typewriter = {
-  export: exportSys
+  export: exportSys,
+  sheetStatus: () => paperSys.getSheetStatus()
 };
 
 const userMargins = {
@@ -542,8 +543,22 @@ createControlsSystem({
 
 document.getElementById('btn-return')?.addEventListener('click', () => handleCarriageReturn());
 document.getElementById('btn-ribbon')?.addEventListener('click', () => handleCycleRibbonMode());
-document.getElementById('btn-sheet')?.addEventListener('click', () => handleRemoveOrInsertPaper('toggle'));
-document.getElementById('btn-sheet-m')?.addEventListener('click', () => handleRemoveOrInsertPaper('toggle'));
+let newSheetPending = false;
+function handleNewSheetButton() {
+  if (newSheetPending) return;
+  if (paperSys.isSheetPresent()) {
+    handleRemoveOrInsertPaper('eject');
+    newSheetPending = true;
+    setTimeout(() => {
+      newSheetPending = false;
+      handleRemoveOrInsertPaper('insert');
+    }, 600);
+  } else {
+    handleRemoveOrInsertPaper('insert');
+  }
+}
+document.getElementById('btn-sheet')?.addEventListener('click', handleNewSheetButton);
+document.getElementById('btn-sheet-m')?.addEventListener('click', handleNewSheetButton);
 
 const btnMute = document.getElementById('btn-mute');
 btnMute?.addEventListener('click', () => {
