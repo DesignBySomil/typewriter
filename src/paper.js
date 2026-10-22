@@ -303,6 +303,7 @@ export function createPaperSystem(carriageGroup) {
 
   function triggerNewSheetInsert() {
     clearPaperCanvas();
+    paperTexture.needsUpdate = true;
     sheetStatus = 'inserting';
     insertAnimProgress = 0.0;
     paperMesh.visible = true;
