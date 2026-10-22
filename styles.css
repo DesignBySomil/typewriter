@@ -480,3 +480,31 @@ body.hud-hidden #print-save-panel {
   #print-save-panel { bottom: 60px; }
 }
 body.kb-up #hud-overlay, body.kb-up #compact-telemetry { display: none !important; }
+
+/* Print / Save: centered modal with sheet preview */
+#print-save-panel {
+  top: 50%; left: 50%; right: auto; bottom: auto;
+  transform: translate(-50%, -50%);
+  width: min(460px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  z-index: 30;
+}
+#print-save-panel.hidden { transform: translate(-50%, -46%); }
+.export-preview-wrap {
+  display: flex; justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 8px; margin-bottom: 10px;
+}
+#export-preview {
+  display: block;
+  max-width: 100%;
+  max-height: min(52vh, 520px);
+  width: auto; height: auto;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+.export-panel-body { flex-direction: row; flex-wrap: wrap; }
+.export-panel-body .export-action-btn { flex: 1 1 120px; width: auto; }
+@media (max-width: 760px) {
+  #print-save-panel { top: 50%; bottom: auto; left: 50%; right: auto; width: calc(100vw - 24px); }
+}
