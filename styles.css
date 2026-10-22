@@ -528,3 +528,7 @@ body.kb-up #hud-overlay, body.kb-up #compact-telemetry { display: none !importan
   #print-save-panel { width: calc(100vw - 16px); padding: 12px; }
   #export-preview { max-height: 62vh; }
 }
+#export-preview { max-height: min(calc(100vh - 230px), 820px); }
+@media (max-width: 760px) {
+  #export-preview { max-height: min(calc(100vh - 250px), 62vh); }
+}
