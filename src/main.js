@@ -471,7 +471,11 @@ function closeExportPanel() {
   if (printSavePanel) printSavePanel.classList.add('hidden');
 }
 function toggleExportPanel() {
-  if (printSavePanel) printSavePanel.classList.toggle('hidden');
+  if (!printSavePanel) return;
+  if (printSavePanel.classList.contains('hidden')) {
+    exportSys.renderPreview(document.getElementById('export-preview'));
+  }
+  printSavePanel.classList.toggle('hidden');
 }
 
 document.getElementById('btn-print-save')?.addEventListener('click', (e) => {
